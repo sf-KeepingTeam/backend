@@ -1,0 +1,9 @@
+global:
+  scrape_interval: 15s # 15초마다 수집
+
+scrape_configs:
+  - job_name: 'spring-boot-app'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8080'] # 로컬 실행 시 Docker 내부에서 호스트 접근을 위해 사용
+        # "내 컴퓨터의 8080포트로 가라"는 뜻
