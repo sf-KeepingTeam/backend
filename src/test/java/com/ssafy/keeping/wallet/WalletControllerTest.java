@@ -14,10 +14,19 @@ import com.ssafy.keeping.domain.user.customer.model.Customer;
 import com.ssafy.keeping.domain.user.customer.repository.CustomerRepository;
 import com.ssafy.keeping.domain.user.owner.model.Owner;
 import com.ssafy.keeping.domain.user.owner.repository.OwnerRepository;
+import com.ssafy.keeping.domain.wallet.constant.LotSourceType;
+import com.ssafy.keeping.domain.wallet.constant.LotStatus;
 import com.ssafy.keeping.domain.wallet.constant.WalletType;
 import com.ssafy.keeping.domain.wallet.dto.PointShareRequestDto;
 import com.ssafy.keeping.domain.wallet.model.Wallet;
+import com.ssafy.keeping.domain.wallet.model.WalletStoreBalance;
+import com.ssafy.keeping.domain.wallet.model.WalletStoreLot;
 import com.ssafy.keeping.domain.wallet.repository.WalletRepository;
+import com.ssafy.keeping.domain.wallet.repository.WalletStoreBalanceRepository;
+import com.ssafy.keeping.domain.wallet.repository.WalletStoreLotRepository;
+import com.ssafy.keeping.domain.payment.transactions.constant.TransactionType;
+import com.ssafy.keeping.domain.payment.transactions.model.Transaction;
+import com.ssafy.keeping.domain.payment.transactions.repository.TransactionRepository;
 import com.ssafy.keeping.support.MySqlTestContainerConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -72,6 +81,15 @@ public class WalletControllerTest extends MySqlTestContainerConfig {
 
     @Autowired
     WalletRepository walletRepository;
+
+    @Autowired
+    WalletStoreBalanceRepository walletStoreBalanceRepository;
+
+    @Autowired
+    WalletStoreLotRepository walletStoreLotRepository;
+
+    @Autowired
+    TransactionRepository transactionRepository;
 
     // ============ Helper Methods ============
 
@@ -191,6 +209,72 @@ public class WalletControllerTest extends MySqlTestContainerConfig {
     class SharePointsTest {
 
         @Test
+        @DisplayName("성공 - 포인트 공유")
+        void sharePoints_success() throws Exception {
+            // given
+            Customer customer = createTestCustomer();
+            Owner owner = createTestOwner();
+            Store store = createTestStore(owner);
+            Group group = createTestGroup();
+            addMemberToGroup(group, customer, true);
+
+            Wallet individualWallet = createIndividualWallet(customer);
+            Wallet groupWallet = createGroupWallet(group);
+
+            // 개인 지갑에 잔액 생성
+            WalletStoreBalance individualBalance = walletStoreBalanceRepository.save(
+                    WalletStoreBalance.builder()
+                            .wallet(individualWallet)
+                            .store(store)
+                            .balance(5000L)
+                            .build()
+            );
+
+            // 원본 충전 트랜잭션 생성 (LOT에 필요)
+            Transaction chargeTransaction = transactionRepository.save(
+                    Transaction.builder()
+                            .wallet(individualWallet)
+                            .customer(customer)
+                            .store(store)
+                            .transactionType(TransactionType.CHARGE)
+                            .amount(5000L)
+                            .build()
+            );
+
+            // 개인 지갑에 LOT 생성
+            walletStoreLotRepository.save(
+                    WalletStoreLot.builder()
+                            .wallet(individualWallet)
+                            .store(store)
+                            .amountTotal(5000L)
+                            .amountRemaining(5000L)
+                            .acquiredAt(java.time.LocalDateTime.now())
+                            .expiredAt(java.time.LocalDateTime.now().plusYears(1))
+                            .sourceType(LotSourceType.CHARGE)
+                            .lotStatus(LotStatus.ACTIVE)
+                            .originChargeTransaction(chargeTransaction)
+                            .build()
+            );
+
+            Authentication auth = createAuth(customer.getCustomerId());
+
+            PointShareRequestDto request = new PointShareRequestDto();
+            request.setIndividualWalletId(individualWallet.getWalletId());
+            request.setGroupWalletId(groupWallet.getWalletId());
+            request.setShareAmount(1000L);
+
+            // when & then
+            mockMvc.perform(post("/wallets/groups/{groupId}/stores/{storeId}",
+                            group.getGroupId(), store.getStoreId())
+                            .with(SecurityMockMvcRequestPostProcessors.authentication(auth))
+                            .header("Idempotency-Key", UUID.randomUUID().toString())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.message").value("모임 지갑으로 포인트 공유를 완료했습니다."));
+        }
+
+        @Test
         @DisplayName("실패 - 인증 없음")
         void sharePoints_unauthorized() throws Exception {
             // given
@@ -248,6 +332,73 @@ public class WalletControllerTest extends MySqlTestContainerConfig {
     @Nested
     @DisplayName("POST /wallets/groups/{groupId}/stores/{storeId}/reclaim - 포인트 회수")
     class ReclaimPointsTest {
+
+        @Test
+        @DisplayName("성공 - 포인트 회수")
+        void reclaimPoints_success() throws Exception {
+            // given
+            Customer customer = createTestCustomer();
+            Owner owner = createTestOwner();
+            Store store = createTestStore(owner);
+            Group group = createTestGroup();
+            addMemberToGroup(group, customer, true);
+
+            Wallet individualWallet = createIndividualWallet(customer);
+            Wallet groupWallet = createGroupWallet(group);
+
+            // 원본 충전 트랜잭션 생성 (LOT에 필요)
+            Transaction chargeTransaction = transactionRepository.save(
+                    Transaction.builder()
+                            .wallet(individualWallet)
+                            .customer(customer)
+                            .store(store)
+                            .transactionType(TransactionType.CHARGE)
+                            .amount(5000L)
+                            .build()
+            );
+
+            // 모임 지갑에 잔액 생성 (회수할 포인트)
+            walletStoreBalanceRepository.save(
+                    WalletStoreBalance.builder()
+                            .wallet(groupWallet)
+                            .store(store)
+                            .balance(3000L)
+                            .build()
+            );
+
+            // 모임 지갑에 LOT 생성 (contributorWallet이 개인 지갑이어야 회수 가능)
+            walletStoreLotRepository.save(
+                    WalletStoreLot.builder()
+                            .wallet(groupWallet)
+                            .store(store)
+                            .amountTotal(3000L)
+                            .amountRemaining(3000L)
+                            .acquiredAt(java.time.LocalDateTime.now())
+                            .expiredAt(java.time.LocalDateTime.now().plusYears(1))
+                            .sourceType(LotSourceType.TRANSFER_IN)
+                            .contributorWallet(individualWallet)
+                            .lotStatus(LotStatus.ACTIVE)
+                            .originChargeTransaction(chargeTransaction)
+                            .build()
+            );
+
+            Authentication auth = createAuth(customer.getCustomerId());
+
+            PointShareRequestDto request = new PointShareRequestDto();
+            request.setIndividualWalletId(individualWallet.getWalletId());
+            request.setGroupWalletId(groupWallet.getWalletId());
+            request.setShareAmount(1000L);
+
+            // when & then
+            mockMvc.perform(post("/wallets/groups/{groupId}/stores/{storeId}/reclaim",
+                            group.getGroupId(), store.getStoreId())
+                            .with(SecurityMockMvcRequestPostProcessors.authentication(auth))
+                            .header("Idempotency-Key", UUID.randomUUID().toString())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.message").value("모임 지갑에서 포인트를 회수했습니다."));
+        }
 
         @Test
         @DisplayName("실패 - 인증 없음")

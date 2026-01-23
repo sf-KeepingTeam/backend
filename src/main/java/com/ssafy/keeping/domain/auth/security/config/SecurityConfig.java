@@ -6,8 +6,10 @@ import com.ssafy.keeping.domain.auth.security.JwtAccessDeniedHandler;
 import com.ssafy.keeping.domain.auth.security.filter.JwtAuthenticationFilter;
 import com.ssafy.keeping.domain.auth.security.filter.NoStoreAuthResponseFilter;
 import com.ssafy.keeping.domain.auth.security.JwtAuthenticationEntryPoint;
+import com.ssafy.keeping.domain.auth.security.filter.LoadTestAuthenticationFilter;
 import com.ssafy.keeping.domain.auth.token.AccessTokenService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -30,6 +32,9 @@ public class SecurityConfig {
 
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
     private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
+
+    @Autowired(required = false)
+    private LoadTestAuthenticationFilter loadTestAuthenticationFilter;
 
     @Value("${fe.base-url}")
     private String feBaseUrl;
@@ -58,7 +63,9 @@ public class SecurityConfig {
             "/customer/register/**",
             "/owners/register/**",
             "/debug/redis",
-            "/swagger-ui.html"
+            "/swagger-ui.html",
+            "/actuator/**",
+            "/loadtest/health"
     };
 
     public static final String[] TEMP_ALLOW_URLS = {
@@ -117,6 +124,8 @@ public class SecurityConfig {
 
                         // 역할 기반 인가 테스트
                         // .hasRole() 인증도 필요하고, 권한(Authority)에 ROLE_{}이 있어야 통과
+                        .requestMatchers("/loadtest/verify-customer").hasRole("CUSTOMER")
+                        .requestMatchers("/loadtest/verify-owner").hasRole("OWNER")
                         .requestMatchers("/customers/**").hasRole("CUSTOMER")
                         .requestMatchers("/owners/**").hasRole("OWNER")
                         .requestMatchers("/cpqr/new").hasRole("CUSTOMER")
@@ -129,6 +138,11 @@ public class SecurityConfig {
                 .oauth2Login(oauth -> oauth.successHandler(successHandler))
                 .addFilterBefore(noStoreFilter, SecurityContextHolderFilter.class)
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+
+        // LoadTest 백도어 필터 추가 (loadtest 프로파일에서만 활성화)
+        if (loadTestAuthenticationFilter != null) {
+            http.addFilterBefore(loadTestAuthenticationFilter, JwtAuthenticationFilter.class);
+        }
 
         return http.build();
     }
