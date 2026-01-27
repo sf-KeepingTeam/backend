@@ -18,6 +18,11 @@ public interface WalletRepository extends JpaRepository<Wallet, Long> {
      */
     Optional<Wallet> findByCustomerAndWalletType(Customer customer, WalletType walletType);
 
+    /**
+     * 고객 ID로 지갑 조회
+     */
+    Optional<Wallet> findByCustomer_CustomerId(Long customerId);
+
     @Query(
     """
     select w
