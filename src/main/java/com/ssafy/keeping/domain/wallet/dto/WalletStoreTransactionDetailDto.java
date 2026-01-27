@@ -1,12 +1,11 @@
 package com.ssafy.keeping.domain.wallet.dto;
 
 import com.ssafy.keeping.domain.payment.transactions.model.Transaction;
-import com.ssafy.keeping.domain.user.customer.model.Customer;
 
 import java.time.LocalDateTime;
 
 public record WalletStoreTransactionDetailDto(
-        String customer,
+        Long customerId,
         Long transactionId,
         String transactionType,    // CHARGE, USE, TRANSFER_IN, etc.
         Long amount,
@@ -15,7 +14,7 @@ public record WalletStoreTransactionDetailDto(
 ) {
     public static WalletStoreTransactionDetailDto from(Transaction transaction) {
         return new WalletStoreTransactionDetailDto (
-                transaction.getCustomer().getName(),
+                transaction.getCustomerId(),
                 transaction.getTransactionId(),
                 transaction.getTransactionType().name(),
                 transaction.getAmount(),

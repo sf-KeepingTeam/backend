@@ -100,7 +100,7 @@ public class PaymentRefundService {
         if (!storeExists) throw new CustomException(ErrorCode.STORE_NOT_FOUND);
 
         // 소유 검증(점주-스토어)
-        boolean owned = storeRepository.existsByStoreIdAndOwner_OwnerId(storeId, ownerId);
+        boolean owned = storeRepository.existsByStoreIdAndOwnerId(storeId, ownerId);
         if (!owned) throw new CustomException(ErrorCode.UNAUTHORIZED_ACCESS);
 
         // 원거래 조회 & 락
@@ -108,7 +108,7 @@ public class PaymentRefundService {
                 .orElseThrow(() -> new CustomException(ErrorCode.TRANSACTION_NOT_FOUND));
 
         // 스토어 일치/타입 검증
-        if (!Objects.equals(original.getStore().getStoreId(), storeId)) {
+        if (!Objects.equals(original.getStoreId(), storeId)) {
             throw new CustomException(ErrorCode.UNAUTHORIZED_ACCESS); // "본인의 거래만 취소할 수 있습니다."
         }
         if (original.getTransactionType() != TransactionType.USE) { // 사용 상태만 취소할 수 있음
@@ -169,8 +169,8 @@ public class PaymentRefundService {
         LocalDateTime now = LocalDateTime.now(clock);
         Transaction cancelTx = Transaction.builder()
                 .wallet(original.getWallet())
-                .customer(original.getCustomer())
-                .store(original.getStore())
+                .customerId(original.getCustomerId())
+                .storeId(original.getStoreId())
                 .transactionType(TransactionType.CANCEL_USE)
                 .amount(original.getAmount())   // 전액
                 .refTransaction(original)
@@ -179,17 +179,17 @@ public class PaymentRefundService {
 
         // 잔액 복원: wallet_store_balances += original.amount
         Wallet wallet = original.getWallet();
-        Store store = original.getStore();
-        WalletStoreBalance balance = walletStoreBalanceRepository.findByWalletAndStoreForUpdate(wallet, store)
+        Long originalStoreId = original.getStoreId();
+        WalletStoreBalance balance = walletStoreBalanceRepository.findByWalletIdAndStoreIdForUpdate(wallet.getWalletId(), originalStoreId)
                 .orElseGet(() -> {
                     try {
                         return walletStoreBalanceRepository.save(WalletStoreBalance.builder()
                                 .wallet(wallet)
-                                .store(store)
+                                .storeId(originalStoreId)
                                 .balance(0L)
                                 .build());
                     } catch (DataIntegrityViolationException e) {
-                        return walletStoreBalanceRepository.findByWalletAndStoreForUpdate(wallet, store)
+                        return walletStoreBalanceRepository.findByWalletIdAndStoreIdForUpdate(wallet.getWalletId(), originalStoreId)
                                 .orElseThrow(() -> e);
                     }
                 });
@@ -226,18 +226,20 @@ public class PaymentRefundService {
 
         // 손님에게 알림 전송
         try {
+            Store store = storeRepository.findById(originalStoreId)
+                    .orElseThrow(() -> new CustomException(ErrorCode.STORE_NOT_FOUND));
             String notificationContent = String.format("%s에서 %,d포인트 사용이 취소되었습니다.",
                     store.getStoreName(), original.getAmount());
 
             notificationService.sendToOwner(
-                    original.getCustomer().getCustomerId(),
+                    original.getCustomerId(),
                     NotificationType.POINT_CANCELED,
                     notificationContent
             );
 
-            log.info("결제 수락 알림 전송 완료 - 손님ID: {}, 결제 금액: {}, 사용 가게 ID: {}", original.getCustomer().getCustomerId(), original.getAmount(), store.getStoreId());
+            log.info("결제 수락 알림 전송 완료 - 손님ID: {}, 결제 금액: {}, 사용 가게 ID: {}", original.getCustomerId(), original.getAmount(), originalStoreId);
         } catch (Exception e) {
-            log.warn("결제 수락 알림 전송 실패 - 손님ID: {}, 결제 금액: {}, 사용 가게 ID: {}", original.getCustomer().getCustomerId(), original.getAmount(), store.getStoreId());
+            log.warn("결제 수락 알림 전송 실패 - 손님ID: {}, 결제 금액: {}, 사용 가게 ID: {}", original.getCustomerId(), original.getAmount(), originalStoreId);
         }
 
         // 멱등 complete

@@ -1,6 +1,5 @@
 package com.ssafy.keeping.domain.group.model;
 
-import com.ssafy.keeping.domain.user.customer.model.Customer;
 import jakarta.persistence.*;
 import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
@@ -33,9 +32,8 @@ public class GroupMember {
     @JoinColumn(name = "group_id", nullable = false)
     private Group group;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "customer_id", nullable = false)
-    private Customer user;
+    @Column(name = "customer_id", nullable = false)
+    private Long customerId;
 
     @Column(name = "leader", nullable = false)
     private boolean leader;

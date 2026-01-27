@@ -1,8 +1,6 @@
 package com.ssafy.keeping.domain.payment.transactions.model;
 
-import com.ssafy.keeping.domain.user.customer.model.Customer;
 import com.ssafy.keeping.domain.payment.transactions.constant.TransactionType;
-import com.ssafy.keeping.domain.store.model.Store;
 import com.ssafy.keeping.domain.wallet.model.Wallet;
 import jakarta.persistence.*;
 import lombok.*;
@@ -32,13 +30,11 @@ public class Transaction {
     @JoinColumn(name = "related_wallet_id")
     private Wallet relatedWallet;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "customer_id", nullable = false)
-    private Customer customer;
+    @Column(name = "customer_id", nullable = false)
+    private Long customerId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "store_id", nullable = false)
-    private Store store;
+    @Column(name = "store_id", nullable = false)
+    private Long storeId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "transaction_type", nullable = false)

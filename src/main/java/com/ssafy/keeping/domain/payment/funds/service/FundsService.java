@@ -116,14 +116,12 @@ public class FundsService {
         }
 
         Wallet walletRef   = walletRepository.getReferenceById(walletId);
-        Customer customerRef = customerRepository.getReferenceById(intent.getCustomerId());
-        Store storeRef    = storeRepository.getReferenceById(storeId);
 
         // 거래 내역 생성 (USE)
         Transaction tx = Transaction.builder()
                 .wallet(walletRef)
-                .customer(customerRef)
-                .store(storeRef)
+                .customerId(intent.getCustomerId())
+                .storeId(storeId)
                 .transactionType(TransactionType.USE)
                 .amount(amount)
                 .createdAt(now)
@@ -134,23 +132,16 @@ public class FundsService {
         List<PaymentIntentItem> intentItems = intentItemRepository.findByIntent_IntentId(intent.getIntentId());
         List<TransactionItem> rows = new ArrayList<>();
 
-        Long txStoreId = tx.getStore().getStoreId();
+        Long txStoreId = tx.getStoreId();
         if (storeId != null && !storeId.equals(txStoreId)) {
             throw new CustomException(ErrorCode.STORE_NOT_MATCH);
         }
 
         for (PaymentIntentItem it : intentItems) {
-
-            Menu menuRef = null;
-            Long menuId = it.getMenuId();
-            if (menuId != null) {
-                menuRef = menuRepository.findById(menuId).orElse(null);
-            }
-
             TransactionItem row = TransactionItem.builder()
                     .transaction(tx)
                     .storeId(storeId)
-                    .menu(menuRef)
+                    .menuId(it.getMenuId())
                     .menuNameSnapshot(it.getMenuNameSnap())
                     .menuPriceSnapshot(it.getUnitPriceSnap())
                     .quantity(it.getQuantity())

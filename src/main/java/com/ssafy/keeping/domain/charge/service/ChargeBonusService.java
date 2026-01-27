@@ -33,12 +33,12 @@ public class ChargeBonusService {
 
         Store store = validateStoreOwnership(ownerId, storeId);
 
-        if (chargeBonusRepository.existsByStoreAndChargeAmount(store, requestDto.getChargeAmount())) {
+        if (chargeBonusRepository.existsByStoreIdAndChargeAmount(storeId, requestDto.getChargeAmount())) {
             throw new CustomException(ErrorCode.CHARGE_BONUS_ALREADY_EXISTS);
         }
 
         ChargeBonus chargeBonus = ChargeBonus.builder()
-                .store(store)
+                .storeId(storeId)
                 .chargeAmount(requestDto.getChargeAmount())
                 .bonusPercentage(requestDto.getBonusPercentage())
                 .build();
@@ -46,15 +46,15 @@ public class ChargeBonusService {
         ChargeBonus savedChargeBonus = chargeBonusRepository.save(chargeBonus);
         log.info("충전 보너스 설정 생성 완료 - ID: {}", savedChargeBonus.getChargeBonusId());
 
-        return ChargeBonusResponseDto.from(savedChargeBonus);
+        return ChargeBonusResponseDto.from(savedChargeBonus, store.getStoreId(), store.getStoreName());
     }
 
     @Transactional(readOnly = true)
     public List<ChargeBonusListResponseDto> getChargeBonusList(Long ownerId, Long storeId) {
         log.info("충전 보너스 설정 목록 조회 - 점주ID: {}, 가게ID: {}", ownerId, storeId);
 
-        Store store = validateStoreOwnership(ownerId, storeId);
-        List<ChargeBonus> chargeBonusList = chargeBonusRepository.findByStore(store);
+        validateStoreOwnership(ownerId, storeId);
+        List<ChargeBonus> chargeBonusList = chargeBonusRepository.findByStoreId(storeId);
 
         return chargeBonusList.stream()
                 .map(ChargeBonusListResponseDto::from)
@@ -65,14 +65,14 @@ public class ChargeBonusService {
     public ChargeBonusResponseDto getChargeBonus(Long ownerId, Long storeId, Long chargeBonusId) {
         log.info("충전 보너스 설정 상세 조회 - 점주ID: {}, 가게ID: {}, 보너스ID: {}", ownerId, storeId, chargeBonusId);
 
-        validateStoreOwnership(ownerId, storeId);
+        Store store = validateStoreOwnership(ownerId, storeId);
         ChargeBonus chargeBonus = findChargeBonusById(chargeBonusId);
 
-        if (!chargeBonus.getStore().getStoreId().equals(storeId)) {
+        if (!chargeBonus.getStoreId().equals(storeId)) {
             throw new CustomException(ErrorCode.CHARGE_BONUS_NOT_FOUND);
         }
 
-        return ChargeBonusResponseDto.from(chargeBonus);
+        return ChargeBonusResponseDto.from(chargeBonus, store.getStoreId(), store.getStoreName());
     }
 
     public ChargeBonusResponseDto updateChargeBonus(Long ownerId, Long storeId, Long chargeBonusId, ChargeBonusRequestDto requestDto) {
@@ -81,18 +81,18 @@ public class ChargeBonusService {
         Store store = validateStoreOwnership(ownerId, storeId);
         ChargeBonus chargeBonus = findChargeBonusById(chargeBonusId);
 
-        if (!chargeBonus.getStore().getStoreId().equals(storeId)) {
+        if (!chargeBonus.getStoreId().equals(storeId)) {
             throw new CustomException(ErrorCode.CHARGE_BONUS_NOT_FOUND);
         }
 
-        if (chargeBonusRepository.existsByStoreAndChargeAmountExcludingId(store, requestDto.getChargeAmount(), chargeBonusId)) {
+        if (chargeBonusRepository.existsByStoreIdAndChargeAmountExcludingId(storeId, requestDto.getChargeAmount(), chargeBonusId)) {
             throw new CustomException(ErrorCode.CHARGE_BONUS_ALREADY_EXISTS);
         }
 
         chargeBonus.updateChargeBonus(requestDto.getChargeAmount(), requestDto.getBonusPercentage());
         log.info("충전 보너스 설정 수정 완료 - ID: {}", chargeBonusId);
 
-        return ChargeBonusResponseDto.from(chargeBonus);
+        return ChargeBonusResponseDto.from(chargeBonus, store.getStoreId(), store.getStoreName());
     }
 
     public void deleteChargeBonus(Long ownerId, Long storeId, Long chargeBonusId) {
@@ -101,7 +101,7 @@ public class ChargeBonusService {
         validateStoreOwnership(ownerId, storeId);
         ChargeBonus chargeBonus = findChargeBonusById(chargeBonusId);
 
-        if (!chargeBonus.getStore().getStoreId().equals(storeId)) {
+        if (!chargeBonus.getStoreId().equals(storeId)) {
             throw new CustomException(ErrorCode.CHARGE_BONUS_NOT_FOUND);
         }
 
@@ -111,17 +111,17 @@ public class ChargeBonusService {
 
     @Transactional(readOnly = true)
     public Optional<ChargeBonus> findChargeBonusByAmount(Long storeId, Long chargeAmount) {
-        Store store = storeRepository.findById(storeId)
+        storeRepository.findById(storeId)
                 .orElseThrow(() -> new CustomException(ErrorCode.STORE_NOT_FOUND));
 
-        return chargeBonusRepository.findByStoreAndChargeAmount(store, chargeAmount);
+        return chargeBonusRepository.findByStoreIdAndChargeAmount(storeId, chargeAmount);
     }
 
     private Store validateStoreOwnership(Long ownerId, Long storeId) {
         Store store = storeRepository.findById(storeId)
                 .orElseThrow(() -> new CustomException(ErrorCode.STORE_NOT_FOUND));
 
-        if (!store.getOwner().getOwnerId().equals(ownerId)) {
+        if (!store.getOwnerId().equals(ownerId)) {
             throw new CustomException(ErrorCode.STORE_ACCESS_DENIED);
         }
 

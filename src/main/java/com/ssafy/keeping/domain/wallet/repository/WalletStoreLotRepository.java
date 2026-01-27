@@ -2,7 +2,6 @@ package com.ssafy.keeping.domain.wallet.repository;
 
 import com.ssafy.keeping.domain.wallet.constant.LotSourceType;
 import com.ssafy.keeping.domain.wallet.model.WalletStoreLot;
-import com.ssafy.keeping.domain.payment.transactions.model.Transaction;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -22,24 +21,24 @@ public interface WalletStoreLotRepository extends JpaRepository<WalletStoreLot, 
     /**
      * 가게 ID로 모든 로트 조회
      */
-    List<WalletStoreLot> findByStore_StoreId(Long storeId);
+    List<WalletStoreLot> findByStoreId(Long storeId);
 
-    Optional<WalletStoreLot> findByOriginChargeTransaction(Transaction originChargeTransaction);
+    Optional<WalletStoreLot> findByOriginChargeTransaction_TransactionId(Long transactionId);
 
     /**
      * 결제 취소 시 정합성 보장을 위한 비관적 락
      * SELECT ... FOR UPDATE로 해당 로트를 독점적으로 잠금
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT l FROM WalletStoreLot l WHERE l.originChargeTransaction = :transaction")
-    Optional<WalletStoreLot> findByOriginChargeTransactionWithLock(@Param("transaction") Transaction transaction);
+    @Query("SELECT l FROM WalletStoreLot l WHERE l.originChargeTransaction.transactionId = :transactionId")
+    Optional<WalletStoreLot> findByOriginChargeTransactionIdWithLock(@Param("transactionId") Long transactionId);
 
     // 개인 LOT 소진용: FIFO + 행잠금
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
        select l from WalletStoreLot l
        where l.wallet.walletId = :walletId
-         and l.store.storeId  = :storeId
+         and l.storeId  = :storeId
        order by l.acquiredAt asc
     """)
     List<WalletStoreLot> lockAllByWalletIdAndStoreIdOrderByAcquiredAt(
@@ -67,7 +66,7 @@ public interface WalletStoreLotRepository extends JpaRepository<WalletStoreLot, 
     @Query("""
         select l from WalletStoreLot l
         where l.wallet.walletId = :walletId
-          and l.store.storeId   = :storeId
+          and l.storeId   = :storeId
           and l.lotStatus = com.ssafy.keeping.domain.wallet.constant.LotStatus.ACTIVE
           and l.expiredAt > :now
           and l.amountRemaining > 0
@@ -100,7 +99,7 @@ public interface WalletStoreLotRepository extends JpaRepository<WalletStoreLot, 
     where l.wallet.walletId = :walletId
       and l.lotStatus = 'ACTIVE'
       and l.amountRemaining > 0
-      and l.contributorWallet.customer.customerId = :customerId
+      and l.contributorWallet.customerId = :customerId
     order by l.acquiredAt asc
     """)
     List<WalletStoreLot> findActiveByWalletIdAndContributorCustomerId(@Param("walletId") Long walletId,
@@ -138,11 +137,10 @@ public interface WalletStoreLotRepository extends JpaRepository<WalletStoreLot, 
     @Query("""
     select l from WalletStoreLot l
     join l.wallet w
-    join l.store s
     join l.contributorWallet cw
     where w.walletId = :groupWalletId
-      and s.storeId = :storeId
-      and cw.customer.customerId = :customerId
+      and l.storeId = :storeId
+      and cw.customerId = :customerId
       and l.sourceType = 'TRANSFER_IN'
       and l.lotStatus = 'ACTIVE'
       and l.amountRemaining > 0

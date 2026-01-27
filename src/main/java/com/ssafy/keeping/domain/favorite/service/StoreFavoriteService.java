@@ -9,9 +9,7 @@ import com.ssafy.keeping.domain.favorite.model.StoreFavorite;
 import com.ssafy.keeping.domain.favorite.repository.StoreFavoriteRepository;
 import com.ssafy.keeping.domain.store.model.Store;
 import com.ssafy.keeping.domain.store.repository.StoreRepository;
-import com.ssafy.keeping.domain.user.customer.model.Customer;
 import com.ssafy.keeping.domain.user.customer.repository.CustomerRepository;
-import com.ssafy.keeping.domain.user.owner.model.Owner;
 import com.ssafy.keeping.domain.user.owner.repository.OwnerRepository;
 import com.ssafy.keeping.global.exception.CustomException;
 import com.ssafy.keeping.global.exception.constants.ErrorCode;
@@ -34,14 +32,14 @@ public class StoreFavoriteService {
 
     @Transactional
     public FavoriteToggleResponseDto toggleFavorite(Long customerId, Long storeId) {
-        Customer customer = customerRepository.findById(customerId)
+        customerRepository.findById(customerId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
-        Store store = storeRepository.findById(storeId)
+        storeRepository.findById(storeId)
                 .orElseThrow(() -> new CustomException(ErrorCode.STORE_NOT_FOUND));
 
         Optional<StoreFavorite> existingFavorite =
-                storeFavoriteRepository.findByCustomerAndStore(customer, store);
+                storeFavoriteRepository.findByCustomerIdAndStoreId(customerId, storeId);
 
         if (existingFavorite.isPresent()) {
             StoreFavorite favorite = existingFavorite.get();
@@ -65,8 +63,8 @@ public class StoreFavoriteService {
             }
         } else {
             StoreFavorite newFavorite = StoreFavorite.builder()
-                    .customer(customer)
-                    .store(store)
+                    .customerId(customerId)
+                    .storeId(storeId)
                     .active(true)
                     .build();
 
@@ -83,19 +81,19 @@ public class StoreFavoriteService {
 
     @Transactional(readOnly = true)
     public StoreFavoriteResponseDto getFavoriteStores(Long customerId, Pageable pageable) {
-        Customer customer = customerRepository.findById(customerId)
+        customerRepository.findById(customerId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
         Page<StoreFavorite> favoritePage =
-                storeFavoriteRepository.findByCustomerAndActiveTrueOrderByFavoritedAtDesc(customer, pageable);
+                storeFavoriteRepository.findByCustomerIdAndActiveTrueOrderByFavoritedAtDesc(customerId, pageable);
 
         Page<SimpleFavoriteDto> favoriteStores = favoritePage.map(sf -> new SimpleFavoriteDto(
                 sf.getFavoriteId(),
-                sf.getStore().getStoreId(),
+                sf.getStoreId(),
                 sf.getFavoritedAt()
         ));
 
-        long totalCount = storeFavoriteRepository.countByCustomerAndActiveTrue(customer);
+        long totalCount = storeFavoriteRepository.countByCustomerIdAndActiveTrue(customerId);
 
         return new StoreFavoriteResponseDto(
                 customerId,
@@ -106,14 +104,14 @@ public class StoreFavoriteService {
 
     @Transactional(readOnly = true)
     public FavoriteCheckResponseDto checkFavoriteStatus(Long customerId, Long storeId) {
-        Customer customer = customerRepository.findById(customerId)
+        customerRepository.findById(customerId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
-        Store store = storeRepository.findById(storeId)
+        storeRepository.findById(storeId)
                 .orElseThrow(() -> new CustomException(ErrorCode.STORE_NOT_FOUND));
 
         Optional<StoreFavorite> activeFavorite =
-                storeFavoriteRepository.findByCustomerAndStoreAndActiveTrue(customer, store);
+                storeFavoriteRepository.findByCustomerIdAndStoreIdAndActiveTrue(customerId, storeId);
 
         return new FavoriteCheckResponseDto(
                 customerId,
@@ -125,13 +123,13 @@ public class StoreFavoriteService {
 
     @Transactional(readOnly = true)
     public StoreFavoriteCountResponseDto getStoreFavoriteCount(Long ownerId, Long storeId) {
-        Owner owner = ownerRepository.findById(ownerId)
+        ownerRepository.findById(ownerId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
-        Store store = storeRepository.findByStoreIdAndOwner(storeId, owner)
+        Store store = storeRepository.findByStoreIdAndOwnerId(storeId, ownerId)
                 .orElseThrow(() -> new CustomException(ErrorCode.STORE_NOT_FOUND));
 
-        long favoriteCount = storeFavoriteRepository.countByStoreAndActiveTrue(store);
+        long favoriteCount = storeFavoriteRepository.countByStoreIdAndActiveTrue(storeId);
 
         return new StoreFavoriteCountResponseDto(
                 store.getStoreId(),

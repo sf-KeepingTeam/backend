@@ -1,7 +1,5 @@
 package com.ssafy.keeping.domain.favorite.model;
 
-import com.ssafy.keeping.domain.user.customer.model.Customer;
-import com.ssafy.keeping.domain.store.model.Store;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -32,13 +30,11 @@ public class StoreFavorite {
     @Column(name = "favorite_id")
     private Long favoriteId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "customer_id", nullable = false)
-    private Customer customer;
+    @Column(name = "customer_id", nullable = false)
+    private Long customerId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "store_id", nullable = false)
-    private Store store;
+    @Column(name = "store_id", nullable = false)
+    private Long storeId;
 
     @Column(name = "active", nullable = false)
     private boolean active;

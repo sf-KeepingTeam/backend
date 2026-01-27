@@ -9,7 +9,6 @@ import com.ssafy.keeping.domain.menuCategory.model.MenuCategory;
 import com.ssafy.keeping.domain.menuCategory.repository.MenuCategoryRepository;
 import com.ssafy.keeping.domain.store.model.Store;
 import com.ssafy.keeping.domain.store.repository.StoreRepository;
-import com.ssafy.keeping.domain.store.service.StoreService;
 import com.ssafy.keeping.domain.user.owner.model.Owner;
 import com.ssafy.keeping.domain.user.owner.repository.OwnerRepository;
 import com.ssafy.keeping.global.exception.CustomException;
@@ -56,7 +55,7 @@ public class MenuService {
         Owner owner = validOwner(ownerId);
         Store store = validStore(storeId);
 
-        if (!store.getOwner().getOwnerId().equals(owner.getOwnerId()))
+        if (!store.getOwnerId().equals(owner.getOwnerId()))
             throw new CustomException(ErrorCode.OWNER_NOT_MATCH);
 
         return menuRepository.findAllMenusByStoreId(storeId);
@@ -66,7 +65,7 @@ public class MenuService {
         Owner owner = validOwner(ownerId);
         Store store = validStore(storeId);
 
-        if (!store.getOwner().getOwnerId().equals(owner.getOwnerId()))
+        if (!store.getOwnerId().equals(owner.getOwnerId()))
             throw new CustomException(ErrorCode.OWNER_NOT_MATCH);
 
         Long categoryId = requestDto.getCategoryId();
@@ -110,7 +109,7 @@ public class MenuService {
         Owner owner = validOwner(ownerId);
         Store store = validStore(storeId);
 
-        if (!store.getOwner().getOwnerId().equals(owner.getOwnerId()))
+        if (!store.getOwnerId().equals(owner.getOwnerId()))
             throw new CustomException(ErrorCode.OWNER_NOT_MATCH);
 
         Menu menu = validMenu(menuId, storeId);
@@ -148,7 +147,7 @@ public class MenuService {
         Owner owner = validOwner(ownerId);
         Store store = validStore(storeId);
 
-        if (!store.getOwner().getOwnerId().equals(owner.getOwnerId()))
+        if (!store.getOwnerId().equals(owner.getOwnerId()))
             throw new CustomException(ErrorCode.OWNER_NOT_MATCH);
 
         Menu menu = validMenu(menusId, storeId);
@@ -160,7 +159,7 @@ public class MenuService {
         Owner owner = validOwner(ownerId);
         Store store = validStore(storeId);
 
-        if (!store.getOwner().getOwnerId().equals(owner.getOwnerId()))
+        if (!store.getOwnerId().equals(owner.getOwnerId()))
             throw new CustomException(ErrorCode.OWNER_NOT_MATCH);
 
         menuRepository.deleteAllByStore_StoreId(storeId);

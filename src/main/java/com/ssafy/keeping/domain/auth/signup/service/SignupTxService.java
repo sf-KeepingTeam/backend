@@ -51,7 +51,7 @@ public class SignupTxService {
             Customer saved = customerService.registerCustomer(req, payload);
 
             // 지갑 생성(멱등)
-            walletService.createOrGetIndividualWallet(saved);
+            walletService.createOrGetIndividualWallet(saved.getCustomerId());
 
             // PIN 저장
             pinAuthService.setOrUpdatePin(saved.getCustomerId(), req.pin());

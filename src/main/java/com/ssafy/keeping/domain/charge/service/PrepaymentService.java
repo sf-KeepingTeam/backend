@@ -99,8 +99,8 @@ public class PrepaymentService {
         // 6. 예약 생성
         PaymentReservation reservation = PaymentReservation.builder()
                 .orderId(orderId)
-                .customer(customer)
-                .store(store)
+                .customerId(customerId)
+                .storeId(storeId)
                 .amount(request.getAmount())
                 .orderName(orderName)
                 .status(PaymentReservation.ReservationStatus.PENDING)
@@ -141,16 +141,16 @@ public class PrepaymentService {
                 .orElseThrow(() -> new CustomException(ErrorCode.TRANSACTION_NOT_FOUND));
 
         // 2. 소유권 검증
-        if (!reservation.getCustomer().getCustomerId().equals(customerId)) {
+        if (!reservation.getCustomerId().equals(customerId)) {
             log.error("[승인] 권한 없음 - 예약 고객: {}, 요청 고객: {}",
-                    reservation.getCustomer().getCustomerId(), customerId);
+                    reservation.getCustomerId(), customerId);
             throw new CustomException(ErrorCode.UNAUTHORIZED_ACCESS);
         }
 
         // 3. 가게 검증
-        if (!reservation.getStore().getStoreId().equals(storeId)) {
+        if (!reservation.getStoreId().equals(storeId)) {
             log.error("[승인] 가게 불일치 - 예약 가게: {}, 요청 가게: {}",
-                    reservation.getStore().getStoreId(), storeId);
+                    reservation.getStoreId(), storeId);
             throw new CustomException(ErrorCode.INVALID_REQUEST);
         }
 
@@ -181,13 +181,16 @@ public class PrepaymentService {
                     .orElseThrow(() -> new CustomException(ErrorCode.TRANSACTION_NOT_FOUND));
 
             WalletStoreBalance balance = walletStoreBalanceRepository
-                    .findByWalletAndStore(existingTransaction.getWallet(), existingTransaction.getStore())
+                    .findByWallet_WalletIdAndStoreId(existingTransaction.getWallet().getWalletId(), existingTransaction.getStoreId())
                     .orElseThrow(() -> new CustomException(ErrorCode.WALLET_NOT_FOUND));
 
             // LOT 조회하여 실제 보너스 정보 계산
             WalletStoreLot existingLot = walletStoreLotRepository
-                    .findByOriginChargeTransaction(existingTransaction)
+                    .findByOriginChargeTransaction_TransactionId(existingTransaction.getTransactionId())
                     .orElseThrow(() -> new CustomException(ErrorCode.WALLET_NOT_FOUND));
+
+            Store existingStore = storeRepository.findById(existingTransaction.getStoreId())
+                    .orElseThrow(() -> new CustomException(ErrorCode.STORE_NOT_FOUND));
 
             long paymentAmount = existingTransaction.getAmount();
             long totalPoints = existingLot.getAmountTotal();
@@ -197,8 +200,8 @@ public class PrepaymentService {
             PrepaymentResponseDto response = PrepaymentResponseDto.builder()
                     .transactionId(existingTransaction.getTransactionId())
                     .transactionUniqueNo(existingTransaction.getTransactionUniqueNo())
-                    .storeId(existingTransaction.getStore().getStoreId())
-                    .storeName(existingTransaction.getStore().getStoreName())
+                    .storeId(existingStore.getStoreId())
+                    .storeName(existingStore.getStoreName())
                     .paymentAmount(paymentAmount)
                     .bonusPercentage(bonusPercentage)
                     .bonusAmount(bonusAmount)
@@ -211,7 +214,7 @@ public class PrepaymentService {
         }
 
         // 7. 지갑 조회 또는 생성
-        Wallet wallet = findOrCreateIndividualWallet(reservation.getCustomer());
+        Wallet wallet = findOrCreateIndividualWallet(reservation.getCustomerId());
 
         // 8. 토스페이먼츠 결제 승인 API 호출
         TossPaymentConfirmRequest tossRequest = TossPaymentConfirmRequest.builder()
@@ -242,11 +245,13 @@ public class PrepaymentService {
         log.info("[승인] 토스 결제 성공 - paymentKey: {}", tossResponse.getPaymentKey());
 
         // 9. 포인트 적립 및 예약 완료 처리 (분산 트랜잭션 보상 처리)
+        Store reservationStore = storeRepository.findById(reservation.getStoreId())
+                .orElseThrow(() -> new CustomException(ErrorCode.STORE_NOT_FOUND));
         try {
             long paymentAmount = request.getAmount();
             PrepaymentResponseDto response = savePaymentAndPoints(
                     wallet,
-                    reservation.getStore(),
+                    reservationStore,
                     paymentAmount,
                     tossResponse
             );
@@ -303,11 +308,11 @@ public class PrepaymentService {
     /**
      * 개인 지갑 조회 또는 생성
      */
-    private Wallet findOrCreateIndividualWallet(Customer customer) {
-        return walletRepository.findByCustomerAndWalletType(customer, WalletType.INDIVIDUAL)
+    private Wallet findOrCreateIndividualWallet(Long customerId) {
+        return walletRepository.findByCustomerIdAndWalletType(customerId, WalletType.INDIVIDUAL)
                 .orElseGet(() -> {
                     Wallet newWallet = Wallet.builder()
-                            .customer(customer)
+                            .customerId(customerId)
                             .walletType(WalletType.INDIVIDUAL)
                             .build();
                     return walletRepository.save(newWallet);
@@ -346,8 +351,8 @@ public class PrepaymentService {
         // 2. Transaction 생성 (원금만 저장)
         Transaction transaction = Transaction.builder()
                 .wallet(wallet)
-                .customer(wallet.getCustomer())
-                .store(store)
+                .customerId(wallet.getCustomerId())
+                .storeId(store.getStoreId())
                 .transactionType(TransactionType.CHARGE)
                 .amount(paymentAmount)
                 .transactionUniqueNo(tossResponse.getPaymentKey())
@@ -358,7 +363,7 @@ public class PrepaymentService {
         LocalDateTime expiredAt = now.plusYears(1);
         WalletStoreLot lot = WalletStoreLot.builder()
                 .wallet(wallet)
-                .store(store)
+                .storeId(store.getStoreId())
                 .amountTotal(totalPoints)
                 .amountRemaining(totalPoints)
                 .acquiredAt(now)
@@ -371,10 +376,10 @@ public class PrepaymentService {
 
         // 4. WalletStoreBalance 업데이트 또는 생성
         WalletStoreBalance balance = walletStoreBalanceRepository
-                .findByWalletAndStore(wallet, store)
+                .findByWallet_WalletIdAndStoreId(wallet.getWalletId(), store.getStoreId())
                 .orElseGet(() -> WalletStoreBalance.builder()
                         .wallet(wallet)
-                        .store(store)
+                        .storeId(store.getStoreId())
                         .balance(0L)
                         .build());
 
@@ -382,7 +387,7 @@ public class PrepaymentService {
         walletStoreBalanceRepository.save(balance);
 
         log.info("[선결제] 포인트 적립 완료 - 고객ID: {}, 결제금액: {}원, 보너스: {}원 ({}%), 총포인트: {}P",
-                wallet.getCustomer().getCustomerId(), paymentAmount, bonusAmount, bonusPercentage, totalPoints);
+                wallet.getCustomerId(), paymentAmount, bonusAmount, bonusPercentage, totalPoints);
 
         // 5. 응답 생성
         return PrepaymentResponseDto.builder()

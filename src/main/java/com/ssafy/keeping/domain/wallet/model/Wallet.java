@@ -1,7 +1,5 @@
 package com.ssafy.keeping.domain.wallet.model;
 
-import com.ssafy.keeping.domain.user.customer.model.Customer;
-import com.ssafy.keeping.domain.group.model.Group;
 import com.ssafy.keeping.domain.wallet.constant.WalletType;
 import jakarta.persistence.*;
 import lombok.*;
@@ -23,13 +21,11 @@ public class Wallet {
     @Column(name = "wallet_id")
     private Long walletId;
 
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "customer_id")
-    private Customer customer;
+    @Column(name = "customer_id")
+    private Long customerId;
 
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "group_id")
-    private Group group;
+    @Column(name = "group_id")
+    private Long groupId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "wallet_type", nullable = false)

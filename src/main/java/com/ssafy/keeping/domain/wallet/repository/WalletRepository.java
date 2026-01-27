@@ -1,7 +1,6 @@
 package com.ssafy.keeping.domain.wallet.repository;
 
 import com.ssafy.keeping.domain.wallet.constant.WalletType;
-import com.ssafy.keeping.domain.user.customer.model.Customer;
 import com.ssafy.keeping.domain.wallet.model.Wallet;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -14,20 +13,17 @@ import java.util.Optional;
 public interface WalletRepository extends JpaRepository<Wallet, Long> {
 
     /**
-     * 고객과 지갑 타입으로 지갑 조회
+     * 고객 ID와 지갑 타입으로 지갑 조회
      */
-    Optional<Wallet> findByCustomerAndWalletType(Customer customer, WalletType walletType);
+    Optional<Wallet> findByCustomerIdAndWalletType(Long customerId, WalletType walletType);
 
     /**
      * 고객 ID로 지갑 조회
      */
-    Optional<Wallet> findByCustomer_CustomerId(Long customerId);
+    Optional<Wallet> findByCustomerId(Long customerId);
 
-    @Query(
-    """
-    select w
-    from Wallet w
-    where w.group.groupId=:groupId
-    """)
-    Optional<Wallet> findByGroupId(@Param("groupId") Long groupId);
+    /**
+     * 그룹 ID로 지갑 조회
+     */
+    Optional<Wallet> findByGroupId(Long groupId);
 }

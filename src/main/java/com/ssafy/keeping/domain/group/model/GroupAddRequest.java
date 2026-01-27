@@ -1,6 +1,5 @@
 package com.ssafy.keeping.domain.group.model;
 
-import com.ssafy.keeping.domain.user.customer.model.Customer;
 import com.ssafy.keeping.domain.group.constant.RequestStatus;
 import jakarta.persistence.*;
 import lombok.*;
@@ -34,9 +33,8 @@ public class GroupAddRequest {
     @JoinColumn(name = "group_id", nullable = false)
     private Group group;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "customer_id", nullable = false)
-    private Customer user;
+    @Column(name = "customer_id", nullable = false)
+    private Long customerId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)

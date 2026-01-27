@@ -1,7 +1,6 @@
 package com.ssafy.keeping.domain.charge.repository;
 
 import com.ssafy.keeping.domain.charge.model.SettlementTask;
-import com.ssafy.keeping.domain.payment.transactions.model.Transaction;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -36,10 +35,10 @@ public interface SettlementTaskRepository extends JpaRepository<SettlementTask, 
      * 조건: 1) PENDING 상태, 2) CHARGE 타입 wallet_store_lot, 3) 미사용 포인트 (총량=잔액)
      */
     @Query("SELECT st FROM SettlementTask st " +
-           "JOIN st.transaction t " +
-           "JOIN WalletStoreLot wsl ON wsl.originChargeTransaction = t " +
+           "JOIN Transaction t ON st.transactionId = t.transactionId " +
+           "JOIN WalletStoreLot wsl ON wsl.originChargeTransaction.transactionId = t.transactionId " +
            "WHERE st.status = 'PENDING' " +
-           "AND t.customer.customerId = :customerId " +
+           "AND t.customerId = :customerId " +
            "AND t.transactionType = 'CHARGE' " +
            "AND wsl.sourceType = 'CHARGE' " +
            "AND wsl.amountTotal = wsl.amountRemaining " +
@@ -47,7 +46,7 @@ public interface SettlementTaskRepository extends JpaRepository<SettlementTask, 
     Page<SettlementTask> findCancelableTransactions(@Param("customerId") Long customerId, Pageable pageable);
 
     /**
-     * Transaction으로 SettlementTask 조회
+     * Transaction ID로 SettlementTask 조회
      */
-    Optional<SettlementTask> findByTransaction(Transaction transaction);
+    Optional<SettlementTask> findByTransactionId(Long transactionId);
 }

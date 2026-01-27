@@ -47,7 +47,7 @@ public class FcmService {
         } else {
             fcmToken = FcmToken.builder()
                     .token(token)
-                    .customer(customer)
+                    .customerId(customerId)
                     .build();
             fcmTokenRepository.save(fcmToken);
             log.info("새 고객 FCM 토큰 등록 완료 - 고객ID: {}", customerId);
@@ -74,7 +74,7 @@ public class FcmService {
         } else {
             fcmToken = FcmToken.builder()
                     .token(token)
-                    .owner(owner)
+                    .ownerId(ownerId)
                     .build();
             fcmTokenRepository.save(fcmToken);
             log.info("새 점주 FCM 토큰 등록 완료 - 점주ID: {}", ownerId);

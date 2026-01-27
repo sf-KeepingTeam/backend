@@ -1,7 +1,6 @@
 package com.ssafy.keeping.domain.charge.repository;
 
 import com.ssafy.keeping.domain.charge.model.ChargeBonus;
-import com.ssafy.keeping.domain.store.model.Store;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -13,12 +12,12 @@ import java.util.Optional;
 @Repository
 public interface ChargeBonusRepository extends JpaRepository<ChargeBonus, Long> {
 
-    List<ChargeBonus> findByStore(Store store);
+    List<ChargeBonus> findByStoreId(Long storeId);
 
-    Optional<ChargeBonus> findByStoreAndChargeAmount(Store store, Long chargeAmount);
+    Optional<ChargeBonus> findByStoreIdAndChargeAmount(Long storeId, Long chargeAmount);
 
-    boolean existsByStoreAndChargeAmount(Store store, Long chargeAmount);
+    boolean existsByStoreIdAndChargeAmount(Long storeId, Long chargeAmount);
 
-    @Query("SELECT COUNT(cb) > 0 FROM ChargeBonus cb WHERE cb.store = :store AND cb.chargeAmount = :chargeAmount AND cb.chargeBonusId != :excludeId")
-    boolean existsByStoreAndChargeAmountExcludingId(@Param("store") Store store, @Param("chargeAmount") Long chargeAmount, @Param("excludeId") Long excludeId);
+    @Query("SELECT COUNT(cb) > 0 FROM ChargeBonus cb WHERE cb.storeId = :storeId AND cb.chargeAmount = :chargeAmount AND cb.chargeBonusId != :excludeId")
+    boolean existsByStoreIdAndChargeAmountExcludingId(@Param("storeId") Long storeId, @Param("chargeAmount") Long chargeAmount, @Param("excludeId") Long excludeId);
 }

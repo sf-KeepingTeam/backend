@@ -130,7 +130,7 @@ public class NotificationService {
 
             // DB에 알림 저장
             Notification notification = Notification.builder()
-                    .customer(customer)
+                    .customerId(customerId)
                     .content(content)
                     .notificationType(notificationType)
                     .build();
@@ -170,7 +170,7 @@ public class NotificationService {
 
             // DB에 알림 저장
             Notification notification = Notification.builder()
-                    .owner(owner)
+                    .ownerId(ownerId)
                     .content(content)
                     .notificationType(notificationType)
                     .build();
@@ -207,7 +207,7 @@ public class NotificationService {
                 }
 
                 Notification n = Notification.builder()
-                        .customer(c)
+                        .customerId(cid)
                         .notificationType(notificationType)
                         .content(content)
                         .build();

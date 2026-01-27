@@ -1,7 +1,5 @@
 package com.ssafy.keeping.domain.charge.model;
 
-import com.ssafy.keeping.domain.user.customer.model.Customer;
-import com.ssafy.keeping.domain.store.model.Store;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -40,18 +38,16 @@ public class PaymentReservation {
     private String orderId;
 
     /**
-     * 고객
+     * 고객 ID
      */
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "customerId", nullable = false)
-    private Customer customer;
+    @Column(name = "customerId", nullable = false)
+    private Long customerId;
 
     /**
-     * 가게
+     * 가게 ID
      */
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "storeId", nullable = false)
-    private Store store;
+    @Column(name = "storeId", nullable = false)
+    private Long storeId;
 
     /**
      * 예약 금액 (서버에서 확정한 금액 - 변조 방지용)

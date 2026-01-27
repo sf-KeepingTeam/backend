@@ -22,11 +22,11 @@ public class ChargeBonusResponseDto {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
-    public static ChargeBonusResponseDto from(ChargeBonus chargeBonus) {
+    public static ChargeBonusResponseDto from(ChargeBonus chargeBonus, Long storeId, String storeName) {
         return ChargeBonusResponseDto.builder()
                 .chargeBonusId(chargeBonus.getChargeBonusId())
-                .storeId(chargeBonus.getStore().getStoreId())
-                .storeName(chargeBonus.getStore().getStoreName())
+                .storeId(storeId)
+                .storeName(storeName)
                 .chargeAmount(chargeBonus.getChargeAmount())
                 .bonusPercentage(chargeBonus.getBonusPercentage())
                 .createdAt(chargeBonus.getCreatedAt())

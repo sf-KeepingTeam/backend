@@ -215,9 +215,9 @@ public class StoreStatisticsService {
         Store store = storeRepository.findById(storeId)
                 .orElseThrow(() -> new CustomException(ErrorCode.STORE_NOT_FOUND));
 
-        if (!store.getOwner().getOwnerId().equals(ownerId)) {
+        if (!store.getOwnerId().equals(ownerId)) {
             log.warn("가게 소유권 없음 - 요청 점주ID: {}, 실제 점주ID: {}",
-                    ownerId, store.getOwner().getOwnerId());
+                    ownerId, store.getOwnerId());
             throw new CustomException(ErrorCode.UNAUTHORIZED_ACCESS);
         }
 

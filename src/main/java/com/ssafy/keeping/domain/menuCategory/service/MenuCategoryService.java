@@ -131,7 +131,7 @@ public class MenuCategoryService {
     }
 
     private void ensureOwnership(Owner owner, Store store) {
-        if (!Objects.equals(store.getOwner().getOwnerId(), owner.getOwnerId()))
+        if (!Objects.equals(store.getOwnerId(), owner.getOwnerId()))
             throw new CustomException(ErrorCode.OWNER_NOT_MATCH);
     }
 

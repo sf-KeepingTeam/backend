@@ -24,7 +24,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     /**
      * 가게 ID로 모든 거래 조회
      */
-    List<Transaction> findByStore_StoreId(Long storeId);
+    List<Transaction> findByStoreId(Long storeId);
 
     /**
      * transactionUniqueNo로 거래 조회
@@ -39,10 +39,10 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      */
     @Query("""
         SELECT t FROM Transaction t
-        LEFT JOIN SettlementTask st ON st.transaction = t
-        WHERE t.wallet.customer.customerId = :customerId
+        LEFT JOIN SettlementTask st ON st.transactionId = t.transactionId
+        WHERE t.wallet.customerId = :customerId
         AND t.wallet.walletType = 'INDIVIDUAL'
-        AND t.store.storeId = :storeId
+        AND t.storeId = :storeId
         AND (st.status IS NULL OR st.status != 'CANCELED')
         ORDER BY t.createdAt DESC
         """)
@@ -58,10 +58,10 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      */
     @Query("""
         SELECT t FROM Transaction t
-        LEFT JOIN SettlementTask st ON st.transaction = t
-        WHERE t.wallet.group.groupId = :groupId
+        LEFT JOIN SettlementTask st ON st.transactionId = t.transactionId
+        WHERE t.wallet.groupId = :groupId
         AND t.wallet.walletType = 'GROUP'
-        AND t.store.storeId = :storeId
+        AND t.storeId = :storeId
         AND (st.status IS NULL OR st.status != 'CANCELED')
         ORDER BY t.createdAt DESC
         """)
@@ -77,7 +77,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     @Query("SELECT COALESCE(SUM(st.actualPaymentAmount), 0) " +
            "FROM SettlementTask st " +
            "JOIN st.transaction t " +
-           "WHERE t.store.storeId = :storeId " +
+           "WHERE t.storeId = :storeId " +
            "AND t.transactionType = 'CHARGE'")
     Long getTotalPaymentAmountByStore(@Param("storeId") Long storeId);
 
@@ -86,7 +86,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      */
     @Query("SELECT COALESCE(SUM(t.amount), 0) " +
            "FROM Transaction t " +
-           "WHERE t.store.storeId = :storeId " +
+           "WHERE t.storeId = :storeId " +
            "AND t.transactionType = 'CHARGE'")
     Long getTotalChargePointsByStore(@Param("storeId") Long storeId);
 
@@ -95,7 +95,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      */
     @Query("SELECT COALESCE(SUM(t.amount), 0) " +
            "FROM Transaction t " +
-           "WHERE t.store.storeId = :storeId " +
+           "WHERE t.storeId = :storeId " +
            "AND t.transactionType = 'USE'")
     Long getTotalPointsUsedByStore(@Param("storeId") Long storeId);
 
@@ -104,7 +104,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      */
     @Query("SELECT COUNT(t) " +
            "FROM Transaction t " +
-           "WHERE t.store.storeId = :storeId")
+           "WHERE t.storeId = :storeId")
     Long getTotalTransactionCountByStore(@Param("storeId") Long storeId);
 
     /**
@@ -112,7 +112,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      */
     @Query("SELECT COUNT(t) " +
            "FROM Transaction t " +
-           "WHERE t.store.storeId = :storeId " +
+           "WHERE t.storeId = :storeId " +
            "AND t.transactionType = 'CHARGE'")
     Long getTotalChargeCountByStore(@Param("storeId") Long storeId);
 
@@ -121,7 +121,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      */
     @Query("SELECT COUNT(t) " +
            "FROM Transaction t " +
-           "WHERE t.store.storeId = :storeId " +
+           "WHERE t.storeId = :storeId " +
            "AND t.transactionType = 'USE'")
     Long getTotalUseCountByStore(@Param("storeId") Long storeId);
 
@@ -131,7 +131,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     @Query("SELECT COALESCE(SUM(st.actualPaymentAmount), 0) " +
            "FROM SettlementTask st " +
            "JOIN st.transaction t " +
-           "WHERE t.store.storeId = :storeId " +
+           "WHERE t.storeId = :storeId " +
            "AND t.transactionType = 'CHARGE' " +
            "AND DATE(t.createdAt) = :date")
     Long getDailyPaymentAmountByStore(@Param("storeId") Long storeId, @Param("date") LocalDate date);
@@ -141,7 +141,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      */
     @Query("SELECT COALESCE(SUM(t.amount), 0) " +
            "FROM Transaction t " +
-           "WHERE t.store.storeId = :storeId " +
+           "WHERE t.storeId = :storeId " +
            "AND t.transactionType = 'CHARGE' " +
            "AND DATE(t.createdAt) = :date")
     Long getDailyTotalChargePointsByStore(@Param("storeId") Long storeId, @Param("date") LocalDate date);
@@ -151,7 +151,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      */
     @Query("SELECT COALESCE(SUM(t.amount), 0) " +
            "FROM Transaction t " +
-           "WHERE t.store.storeId = :storeId " +
+           "WHERE t.storeId = :storeId " +
            "AND t.transactionType = 'USE' " +
            "AND DATE(t.createdAt) = :date")
     Long getDailyPointsUsedByStore(@Param("storeId") Long storeId, @Param("date") LocalDate date);
@@ -161,7 +161,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      */
     @Query("SELECT COUNT(t) " +
            "FROM Transaction t " +
-           "WHERE t.store.storeId = :storeId " +
+           "WHERE t.storeId = :storeId " +
            "AND t.transactionType = 'CHARGE' " +
            "AND DATE(t.createdAt) = :date")
     Long getDailyChargeCountByStore(@Param("storeId") Long storeId, @Param("date") LocalDate date);
@@ -171,7 +171,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      */
     @Query("SELECT COUNT(t) " +
            "FROM Transaction t " +
-           "WHERE t.store.storeId = :storeId " +
+           "WHERE t.storeId = :storeId " +
            "AND t.transactionType = 'USE' " +
            "AND DATE(t.createdAt) = :date")
     Long getDailyUseCountByStore(@Param("storeId") Long storeId, @Param("date") LocalDate date);
@@ -181,7 +181,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      */
     @Query("SELECT COUNT(t) " +
            "FROM Transaction t " +
-           "WHERE t.store.storeId = :storeId " +
+           "WHERE t.storeId = :storeId " +
            "AND DATE(t.createdAt) = :date")
     Long getDailyTransactionCountByStore(@Param("storeId") Long storeId, @Param("date") LocalDate date);
 
@@ -191,7 +191,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     @Query("SELECT COALESCE(SUM(st.actualPaymentAmount), 0) " +
            "FROM SettlementTask st " +
            "JOIN st.transaction t " +
-           "WHERE t.store.storeId = :storeId " +
+           "WHERE t.storeId = :storeId " +
            "AND t.transactionType = 'CHARGE' " +
            "AND DATE(t.createdAt) BETWEEN :startDate AND :endDate")
     Long getPeriodPaymentAmountByStore(@Param("storeId") Long storeId,
@@ -203,7 +203,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      */
     @Query("SELECT COALESCE(SUM(t.amount), 0) " +
            "FROM Transaction t " +
-           "WHERE t.store.storeId = :storeId " +
+           "WHERE t.storeId = :storeId " +
            "AND t.transactionType = 'CHARGE' " +
            "AND DATE(t.createdAt) BETWEEN :startDate AND :endDate")
     Long getPeriodTotalChargePointsByStore(@Param("storeId") Long storeId,
@@ -215,7 +215,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      */
     @Query("SELECT COALESCE(SUM(t.amount), 0) " +
            "FROM Transaction t " +
-           "WHERE t.store.storeId = :storeId " +
+           "WHERE t.storeId = :storeId " +
            "AND t.transactionType = 'USE' " +
            "AND DATE(t.createdAt) BETWEEN :startDate AND :endDate")
     Long getPeriodPointsUsedByStore(@Param("storeId") Long storeId,
@@ -227,7 +227,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      */
     @Query("SELECT COUNT(t) " +
            "FROM Transaction t " +
-           "WHERE t.store.storeId = :storeId " +
+           "WHERE t.storeId = :storeId " +
            "AND t.transactionType = 'CHARGE' " +
            "AND DATE(t.createdAt) BETWEEN :startDate AND :endDate")
     Long getPeriodChargeCountByStore(@Param("storeId") Long storeId,
@@ -239,7 +239,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      */
     @Query("SELECT COUNT(t) " +
            "FROM Transaction t " +
-           "WHERE t.store.storeId = :storeId " +
+           "WHERE t.storeId = :storeId " +
            "AND t.transactionType = 'USE' " +
            "AND DATE(t.createdAt) BETWEEN :startDate AND :endDate")
     Long getPeriodUseCountByStore(@Param("storeId") Long storeId,
@@ -251,7 +251,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      */
     @Query("SELECT COUNT(t) " +
            "FROM Transaction t " +
-           "WHERE t.store.storeId = :storeId " +
+           "WHERE t.storeId = :storeId " +
            "AND DATE(t.createdAt) BETWEEN :startDate AND :endDate")
     Long getPeriodTransactionCountByStore(@Param("storeId") Long storeId,
                                           @Param("startDate") LocalDate startDate,
@@ -265,7 +265,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     @Query("SELECT COALESCE(SUM(st.actualPaymentAmount), 0) " +
            "FROM SettlementTask st " +
            "JOIN st.transaction t " +
-           "WHERE t.store.storeId = :storeId " +
+           "WHERE t.storeId = :storeId " +
            "AND t.transactionType = 'CHARGE' " +
            "AND YEAR(t.createdAt) = :year " +
            "AND MONTH(t.createdAt) = :month")
@@ -278,7 +278,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      */
     @Query("SELECT COALESCE(SUM(t.amount), 0) " +
            "FROM Transaction t " +
-           "WHERE t.store.storeId = :storeId " +
+           "WHERE t.storeId = :storeId " +
            "AND t.transactionType = 'CHARGE' " +
            "AND YEAR(t.createdAt) = :year " +
            "AND MONTH(t.createdAt) = :month")
@@ -291,7 +291,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      */
     @Query("SELECT COALESCE(SUM(t.amount), 0) " +
            "FROM Transaction t " +
-           "WHERE t.store.storeId = :storeId " +
+           "WHERE t.storeId = :storeId " +
            "AND t.transactionType = 'USE' " +
            "AND YEAR(t.createdAt) = :year " +
            "AND MONTH(t.createdAt) = :month")
@@ -304,7 +304,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      */
     @Query("SELECT COUNT(t) " +
            "FROM Transaction t " +
-           "WHERE t.store.storeId = :storeId " +
+           "WHERE t.storeId = :storeId " +
            "AND t.transactionType = 'CHARGE' " +
            "AND YEAR(t.createdAt) = :year " +
            "AND MONTH(t.createdAt) = :month")
@@ -317,7 +317,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      */
     @Query("SELECT COUNT(t) " +
            "FROM Transaction t " +
-           "WHERE t.store.storeId = :storeId " +
+           "WHERE t.storeId = :storeId " +
            "AND t.transactionType = 'USE' " +
            "AND YEAR(t.createdAt) = :year " +
            "AND MONTH(t.createdAt) = :month")
@@ -330,7 +330,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      */
     @Query("SELECT COUNT(t) " +
            "FROM Transaction t " +
-           "WHERE t.store.storeId = :storeId " +
+           "WHERE t.storeId = :storeId " +
            "AND YEAR(t.createdAt) = :year " +
            "AND MONTH(t.createdAt) = :month")
     Long getMonthlyTransactionCountByStore(@Param("storeId") Long storeId,

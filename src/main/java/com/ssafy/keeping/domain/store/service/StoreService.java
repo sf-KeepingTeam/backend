@@ -53,7 +53,7 @@ public class StoreService {
 
         // 가게 생성 (merchantId는 자동 생성되는 storeId를 사용하거나 제거)
         Store store = Store.builder()
-                .owner(owner)
+                .ownerId(ownerId)
                 .taxIdNumber(requestDto.getTaxIdNumber())
                 .storeName(requestDto.getStoreName())
                 .address(requestDto.getAddress())
@@ -75,7 +75,7 @@ public class StoreService {
     public StoreResponseDto editStore(Long storeId, Long ownerId, StoreEditRequestDto requestDto) {
         Owner owner = validOwner(ownerId);
         Store store = validStore(storeId);
-        if (!store.getOwner().getOwnerId().equals(owner.getOwnerId()))
+        if (!store.getOwnerId().equals(owner.getOwnerId()))
             throw new CustomException(ErrorCode.OWNER_NOT_MATCH);
 
         if (!Objects.equals(store.getStoreStatus(), StoreStatus.ACTIVE)) {
@@ -107,7 +107,7 @@ public class StoreService {
         Owner owner = validOwner(ownerId);
         Store store = validStore(storeId);
 
-        if (!store.getOwner().getOwnerId().equals(owner.getOwnerId()))
+        if (!store.getOwnerId().equals(owner.getOwnerId()))
             throw new CustomException(ErrorCode.OWNER_NOT_MATCH);
 
         boolean hasPositive = balanceRepository
@@ -179,7 +179,7 @@ public class StoreService {
     public List<StoreResponseDto> getMyStores(Long ownerId) {
         validOwner(ownerId);
 
-        List<Store> stores = storeRepository.findByOwnerOwnerIdAndDeletedAtIsNull(ownerId);
+        List<Store> stores = storeRepository.findByOwnerIdAndDeletedAtIsNull(ownerId);
 
         return stores.stream()
                 .map(StoreResponseDto::fromEntity)

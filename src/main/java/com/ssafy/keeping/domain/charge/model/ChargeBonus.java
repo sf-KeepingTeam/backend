@@ -1,6 +1,5 @@
 package com.ssafy.keeping.domain.charge.model;
 
-import com.ssafy.keeping.domain.store.model.Store;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -29,10 +28,8 @@ public class ChargeBonus {
     @Column(name = "charge_bonus_id")
     private Long chargeBonusId;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "store_id", nullable = false,
-            foreignKey = @ForeignKey(name = "fk_charge_bonus_store"))
-    private Store store;
+    @Column(name = "store_id", nullable = false)
+    private Long storeId;
 
     @Column(name = "charge_amount", nullable = false)
     private Long chargeAmount;

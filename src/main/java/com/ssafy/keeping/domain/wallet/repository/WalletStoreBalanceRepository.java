@@ -1,6 +1,5 @@
 package com.ssafy.keeping.domain.wallet.repository;
 
-import com.ssafy.keeping.domain.store.model.Store;
 import com.ssafy.keeping.domain.wallet.constant.WalletType;
 import com.ssafy.keeping.domain.wallet.model.Wallet;
 import com.ssafy.keeping.domain.wallet.model.WalletStoreBalance;
@@ -28,19 +27,18 @@ public interface WalletStoreBalanceRepository extends JpaRepository<WalletStoreB
     /**
      * 가게 ID로 모든 잔액 조회
      */
-    List<WalletStoreBalance> findByStore_StoreId(Long storeId);
+    List<WalletStoreBalance> findByStoreId(Long storeId);
 
     /**
-     * 지갑과 가게로 잔액 조회
+     * 지갑 ID와 가게 ID로 잔액 조회
      */
-    Optional<WalletStoreBalance> findByWalletAndStore(Wallet wallet, Store store);
+    Optional<WalletStoreBalance> findByWallet_WalletIdAndStoreId(Long walletId, Long storeId);
 
     @Query("""
         select b
         from WalletStoreBalance b
         join fetch b.wallet
-        join fetch b.store
-        where b.store.storeId=:storeId
+        where b.storeId=:storeId
         and b.wallet.walletId=:walletId
         """)
     Optional<WalletStoreBalance> findByWalletIdAndStoreId(@Param("walletId") Long walletId, @Param("storeId") Long storeId);
@@ -49,14 +47,14 @@ public interface WalletStoreBalanceRepository extends JpaRepository<WalletStoreB
     @Query("""
         select b from WalletStoreBalance b
          where b.wallet.walletId = :walletId
-           and b.store.storeId   = :storeId
+           and b.storeId   = :storeId
     """)
     Optional<WalletStoreBalance> lockByWalletIdAndStoreId(@Param("walletId") Long walletId,
                                                           @Param("storeId") Long storeId);
     @Query("""
         select case when count(wb)>0 then true else false end
         from WalletStoreBalance wb
-        where wb.store.storeId = :storeId and wb.balance > 0
+        where wb.storeId = :storeId and wb.balance > 0
     """)
     @Lock(LockModeType.PESSIMISTIC_READ)
     boolean existsPositiveBalanceForStoreWithLock(@Param("storeId") Long storeId);
@@ -79,27 +77,26 @@ public interface WalletStoreBalanceRepository extends JpaRepository<WalletStoreB
     @Query("""
       select b
       from WalletStoreBalance b
-      where b.wallet = :wallet and b.store = :store
+      where b.wallet.walletId = :walletId and b.storeId = :storeId
     """)
-    Optional<WalletStoreBalance> findByWalletAndStoreForUpdate(
-            @Param("wallet") Wallet wallet,
-            @Param("store") Store store
+    Optional<WalletStoreBalance> findByWalletIdAndStoreIdForUpdate(
+            @Param("walletId") Long walletId,
+            @Param("storeId") Long storeId
     );
 
     @Query("""
     select coalesce(sum(b.balance),0)
     from WalletStoreBalance b
     where b.wallet.walletType = :walletType
-      and b.wallet.customer.customerId = :customerId
+      and b.wallet.customerId = :customerId
 """)
     Optional<Long> sumBalanceByCustomerIdAndType(@Param("customerId") Long customerId,
                                                  @Param("walletType") WalletType walletType);
 
     @Query(value = """
             SELECT wsb FROM WalletStoreBalance wsb
-            JOIN FETCH wsb.store s
             JOIN wsb.wallet w
-            WHERE w.customer.customerId = :customerId
+            WHERE w.customerId = :customerId
               AND w.walletType = 'INDIVIDUAL'
               AND wsb.balance > 0
             ORDER BY wsb.updatedAt DESC
@@ -107,7 +104,7 @@ public interface WalletStoreBalanceRepository extends JpaRepository<WalletStoreB
             countQuery = """
             SELECT COUNT(wsb) FROM WalletStoreBalance wsb
             JOIN wsb.wallet w
-            WHERE w.customer.customerId = :customerId
+            WHERE w.customerId = :customerId
               AND w.walletType = 'INDIVIDUAL'
               AND wsb.balance > 0
             """)
@@ -115,9 +112,8 @@ public interface WalletStoreBalanceRepository extends JpaRepository<WalletStoreB
 
     @Query(value = """
             SELECT wsb FROM WalletStoreBalance wsb
-            JOIN FETCH wsb.store s
             JOIN wsb.wallet w
-            WHERE w.group.groupId = :groupId
+            WHERE w.groupId = :groupId
               AND w.walletType = 'GROUP'
               AND wsb.balance > 0
             ORDER BY wsb.updatedAt DESC
@@ -125,7 +121,7 @@ public interface WalletStoreBalanceRepository extends JpaRepository<WalletStoreB
             countQuery = """
             SELECT COUNT(wsb) FROM WalletStoreBalance wsb
             JOIN wsb.wallet w
-            WHERE w.group.groupId = :groupId
+            WHERE w.groupId = :groupId
               AND w.walletType = 'GROUP'
               AND wsb.balance > 0
             """)

@@ -17,7 +17,7 @@ public interface GroupAddRequestRepository extends JpaRepository<GroupAddRequest
     select count(gr) > 0
     from GroupAddRequest gr
     where gr.group.groupId = :groupId
-      and gr.user.customerId  = :userId
+      and gr.customerId  = :userId
       and gr.requestStatus = :status
     """)
     boolean existsRequest(@Param("groupId") Long groupId, @Param("userId") Long userId,
@@ -25,7 +25,7 @@ public interface GroupAddRequestRepository extends JpaRepository<GroupAddRequest
 
     @Query("""
     select new com.ssafy.keeping.domain.group.dto.AddRequestResponseDto(
-        gr.groupAddRequestId, gr.user.name, gr.requestStatus
+        gr.groupAddRequestId, gr.customerId, gr.requestStatus
     )
     from GroupAddRequest gr
     where gr.group.groupId = :groupId

@@ -24,7 +24,7 @@ public class WalletController {
             @AuthenticationPrincipal Long customerId,
             @PathVariable Long groupId
     ) {
-        WalletResponseDto dto = walletService.getGroupWallet(groupId, customerId);
+        WalletResponseDto dto = walletService.getGroupWalletWithValidation(groupId, customerId);
         return ResponseEntity.ok(ApiResponse.success("모임 지갑 조회에 성공했습니다.", HttpStatus.OK.value(), dto));
     }
 

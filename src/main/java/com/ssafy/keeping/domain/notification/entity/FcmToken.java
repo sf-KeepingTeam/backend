@@ -1,8 +1,6 @@
 package com.ssafy.keeping.domain.notification.entity;
 
 
-import com.ssafy.keeping.domain.user.customer.model.Customer;
-import com.ssafy.keeping.domain.user.owner.model.Owner;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -25,13 +23,11 @@ public class FcmToken {
     @Column(name = "token", nullable = false, length = 500)
     private String token;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "customer_id")
-    private Customer customer;
+    @Column(name = "customer_id")
+    private Long customerId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "owner_id")
-    private Owner owner;
+    @Column(name = "owner_id")
+    private Long ownerId;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
@@ -40,10 +36,10 @@ public class FcmToken {
     private LocalDateTime updatedAt;
 
     @Builder
-    public FcmToken(String token, Customer customer, Owner owner) {
+    public FcmToken(String token, Long customerId, Long ownerId) {
         this.token = token;
-        this.customer = customer;
-        this.owner = owner;
+        this.customerId = customerId;
+        this.ownerId = ownerId;
         this.createdAt = LocalDateTime.now();
         this.updatedAt = LocalDateTime.now();
     }

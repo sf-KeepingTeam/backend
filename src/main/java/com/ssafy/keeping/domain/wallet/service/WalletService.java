@@ -67,46 +67,46 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
     private final ObjectMapper canonicalObjectMapper;
 
     @Transactional
-    public Wallet createOrGetIndividualWallet(Customer customer) {
+    public Wallet createOrGetIndividualWallet(Long customerId) {
         // 이미 있으면 그대로 반환 (회원가입 재시도/중복 호출 대비)
-        return walletRepository.findByCustomerAndWalletType(customer, WalletType.INDIVIDUAL)
+        return walletRepository.findByCustomerIdAndWalletType(customerId, WalletType.INDIVIDUAL)
                 .orElseGet(() -> {
                     try {
                         return walletRepository.save(
                                 Wallet.builder()
                                         .walletType(WalletType.INDIVIDUAL)
-                                        .customer(customer)
+                                        .customerId(customerId)
                                         .build()
                         );
                     } catch (DataIntegrityViolationException e) {
                         // 동시성으로 동시에 생성 시도한 경우
-                        return walletRepository.findByCustomerAndWalletType(customer, WalletType.INDIVIDUAL)
+                        return walletRepository.findByCustomerIdAndWalletType(customerId, WalletType.INDIVIDUAL)
                                 .orElseThrow(() -> new CustomException(ErrorCode.WALLET_CREATE_FAILED));
                     }
                 });
     }
 
-    public WalletResponseDto createGroupWallet(Group group) {
+    public WalletResponseDto createGroupWallet(Long groupId) {
 
         Wallet saved = walletRepository.save(
                 Wallet.builder()
                         .walletType(WalletType.GROUP)
-                        .group(group)
+                        .groupId(groupId)
                         .build()
         );
 
         return new WalletResponseDto(
                 saved.getWalletId(), saved.getWalletType(),
-                group.getGroupId(),
+                groupId,
                 new ArrayList<>(),
                 saved.getCreatedAt()
         );
     }
 
-    // Group 엔티티가 이미 있는 호출용
-    public WalletResponseDto getGroupWallet(Group group) {
+    // Group ID가 넘어오는 호출용
+    public WalletResponseDto getGroupWallet(Long groupId) {
 
-        Wallet groupWallet = validGroupWallet(group.getGroupId());
+        Wallet groupWallet = validGroupWallet(groupId);
 
         List<WalletStoreBalanceResponseDto> groupStoreBalanceDtoList =
                 balanceRepository.findByWallet_WalletId(groupWallet.getWalletId())
@@ -121,16 +121,16 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
         return new WalletResponseDto(
                 groupWallet.getWalletId(),
                 groupWallet.getWalletType(),
-                group.getGroupId(),
+                groupId,
                 groupStoreBalanceDtoList,
                 groupWallet.getCreatedAt()
         );
     }
     // id만 넘어오는 호출용(검증을 여기서 직접 수행)
-    public WalletResponseDto getGroupWallet(Long groupId, Long customerId) {
+    public WalletResponseDto getGroupWalletWithValidation(Long groupId, Long customerId) {
         validCustomer(customerId);
-        Group group = validGroup(groupId);
-        Wallet groupWallet = validGroupWallet(group.getGroupId());
+        validGroup(groupId);
+        Wallet groupWallet = validGroupWallet(groupId);
 
         List<WalletStoreBalanceResponseDto> groupStoreBalanceDtoList =
                 balanceRepository.findByWallet_WalletId(groupWallet.getWalletId())
@@ -145,7 +145,7 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
         return new WalletResponseDto(
                 groupWallet.getWalletId(),
                 groupWallet.getWalletType(),
-                group.getGroupId(),
+                groupId,
                 groupStoreBalanceDtoList,
                 groupWallet.getCreatedAt()
         );
@@ -204,15 +204,15 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
         final long shareAmount = req.getShareAmount();
         if (shareAmount <= 0) throw new CustomException(ErrorCode.BAD_REQUEST);
 
-        Customer actor = validCustomer(userId);
+        validCustomer(userId);
         Wallet individual = validWallet(req.getIndividualWalletId());
-        Wallet group = validWallet(req.getGroupWalletId());
+        Wallet groupWallet = validWallet(req.getGroupWalletId());
 
-        if (individual.getWalletType() != WalletType.INDIVIDUAL || group.getWalletType() != WalletType.GROUP)
+        if (individual.getWalletType() != WalletType.INDIVIDUAL || groupWallet.getWalletType() != WalletType.GROUP)
             throw new CustomException(ErrorCode.BAD_REQUEST);
-        validOwnershipAndMembership(userId, groupId, individual, group);
+        validOwnershipAndMembership(userId, groupId, individual, groupWallet);
 
-        Store store = validStore(storeId);
+        validStore(storeId);
 
         // 2) 잔액 행잠금 조회
         WalletStoreBalance indivBal = balanceRepository.lockByWalletIdAndStoreId(individual.getWalletId(), storeId)
@@ -220,9 +220,9 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
         if (indivBal.getBalance().compareTo(shareAmount) < 0)
             throw new CustomException(ErrorCode.OVER_INDIVIDUAL_POINT);
 
-        WalletStoreBalance groupBal = balanceRepository.lockByWalletIdAndStoreId(group.getWalletId(), storeId)
+        WalletStoreBalance groupBal = balanceRepository.lockByWalletIdAndStoreId(groupWallet.getWalletId(), storeId)
                 .orElseGet(() -> balanceRepository.save(
-                        WalletStoreBalance.builder().wallet(group).store(store).balance(0L).build()
+                        WalletStoreBalance.builder().wallet(groupWallet).storeId(storeId).balance(0L).build()
                 ));
 
         // 3) LOT 차감 및 수신 LOT 적립(FIFO)
@@ -241,15 +241,15 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
             // 수신 LOT: 동일 origin_charge_tx 기준으로 1개에 누적
             WalletStoreLot dst = lotRepository
                     .findByWalletIdAndStoreIdAndOriginChargeTxIdAndSourceType(
-                            group.getWalletId(),
+                            groupWallet.getWalletId(),
                             storeId,
                             src.getOriginChargeTransaction().getTransactionId(),
                             LotSourceType.TRANSFER_IN
                     )
                     .orElseGet(() -> lotRepository.save(
                             WalletStoreLot.builder()
-                                    .wallet(group)
-                                    .store(store)
+                                    .wallet(groupWallet)
+                                    .storeId(storeId)
                                     .amountTotal(0L)
                                     .amountRemaining(0L)
                                     .acquiredAt(src.getAcquiredAt())
@@ -272,29 +272,27 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
         Transaction txOut = transactionRepository.save(
                 Transaction.builder()
                         .wallet(individual)
-                        .relatedWallet(group)
-                        .customer(actor)
-                        .store(store)
+                        .relatedWallet(groupWallet)
+                        .customerId(userId)
+                        .storeId(storeId)
                         .transactionType(TransactionType.TRANSFER_OUT) // 출금
                         .amount(shareAmount)
                         .build()
         );
         Transaction txIn = transactionRepository.save(
                 Transaction.builder()
-                        .wallet(group) // 수신 지갑
+                        .wallet(groupWallet) // 수신 지갑
                         .relatedWallet(individual)
-                        .customer(actor)
-                        .store(store)
+                        .customerId(userId)
+                        .storeId(storeId)
                         .transactionType(TransactionType.TRANSFER_IN)
                         .amount(shareAmount)
                         .build()
         );
 
+        // 알림 메시지 생성 (이름은 서비스 레이어에서 별도로 조회해서 구성)
         String message = String.format(
-                "%s님이 %s 모임에 %s 가게 point %,d원 공유했습니다.",
-                actor.getName(),
-                group.getGroup().getGroupName(),
-                store.getStoreName(),
+                "모임에 가게 point %,d원이 공유되었습니다.",
                 shareAmount
         );
 
@@ -307,7 +305,7 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
 
         return new PointShareResponseDto(
                 txOut.getTransactionId(), txIn.getTransactionId(),
-                individual.getWalletId(), group.getWalletId(), storeId, shareAmount,
+                individual.getWalletId(), groupWallet.getWalletId(), storeId, shareAmount,
                 groupBal.getBalance(), indivBal.getBalance(), LocalDateTime.now(), false
         );
     }
@@ -355,22 +353,22 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
         final long amount = req.getShareAmount(); // 재사용
         if (amount <= 0) throw new CustomException(ErrorCode.BAD_REQUEST);
 
-        Customer actor = validCustomer(userId);
+        validCustomer(userId);
         Wallet individual = validWallet(req.getIndividualWalletId());
-        Wallet group = validWallet(req.getGroupWalletId());
+        Wallet groupWallet = validWallet(req.getGroupWalletId());
 
-        if (individual.getWalletType() != WalletType.INDIVIDUAL || group.getWalletType() != WalletType.GROUP)
+        if (individual.getWalletType() != WalletType.INDIVIDUAL || groupWallet.getWalletType() != WalletType.GROUP)
             throw new CustomException(ErrorCode.BAD_REQUEST);
-        validOwnershipAndMembership(userId, groupId, individual, group);
+        validOwnershipAndMembership(userId, groupId, individual, groupWallet);
 
-        Store store = validStore(storeId);
+        validStore(storeId);
 
         // 잔액 행잠금
         WalletStoreBalance indivBal = balanceRepository.lockByWalletIdAndStoreId(individual.getWalletId(), storeId)
                 .orElseGet(() -> balanceRepository.save(
-                        WalletStoreBalance.builder().wallet(individual).store(store).balance(0L).build()
+                        WalletStoreBalance.builder().wallet(individual).storeId(storeId).balance(0L).build()
                 ));
-        WalletStoreBalance groupBal = balanceRepository.lockByWalletIdAndStoreId(group.getWalletId(), storeId)
+        WalletStoreBalance groupBal = balanceRepository.lockByWalletIdAndStoreId(groupWallet.getWalletId(), storeId)
                 .orElseThrow(() -> new CustomException(ErrorCode.BEFORE_GROUP_CHARGE)); // 그룹에 해당 매장 잔액이 있어야 함
         if (groupBal.getBalance().compareTo(amount) < 0)
             throw new CustomException(ErrorCode.OVER_GROUP_POINT);
@@ -378,7 +376,7 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
         // LOT 회수: 그룹 → 개인, FIFO
         Long left = amount;
         List<WalletStoreLot> srcLots =
-                lotRepository.lockAllByWalletIdAndStoreIdOrderByAcquiredAt(group.getWalletId(), storeId);
+                lotRepository.lockAllByWalletIdAndStoreIdOrderByAcquiredAt(groupWallet.getWalletId(), storeId);
         for (WalletStoreLot src : srcLots) {
             if (left == 0) break;
             if (src.isExpired() || src.isFullyUsed()) continue;
@@ -407,13 +405,13 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
                     .orElseGet(() -> lotRepository.save(
                             WalletStoreLot.builder()
                                     .wallet(individual)
-                                    .store(store)
+                                    .storeId(storeId)
                                     .amountTotal(0L)
                                     .amountRemaining(0L)
                                     .acquiredAt(src.getAcquiredAt())
                                     .expiredAt(src.getExpiredAt())
                                     .sourceType(LotSourceType.TRANSFER_IN)
-                                    .contributorWallet(group) // 출처 표기
+                                    .contributorWallet(groupWallet) // 출처 표기
                                     .lotStatus(LotStatus.ACTIVE)
                                     .originChargeTransaction(src.getOriginChargeTransaction())
                                     .build()
@@ -429,10 +427,10 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
         // 거래 기록 2건
         Transaction txOut = transactionRepository.save(
                 Transaction.builder()
-                        .wallet(group)
+                        .wallet(groupWallet)
                         .relatedWallet(individual)
-                        .customer(actor)
-                        .store(store)
+                        .customerId(userId)
+                        .storeId(storeId)
                         .transactionType(TransactionType.TRANSFER_OUT)           // 그룹에서 회수
                         .amount(amount)
                         .build()
@@ -440,9 +438,9 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
         Transaction txIn = transactionRepository.save(
                 Transaction.builder()
                         .wallet(individual)
-                        .relatedWallet(group)
-                        .customer(actor)
-                        .store(store)
+                        .relatedWallet(groupWallet)
+                        .customerId(userId)
+                        .storeId(storeId)
                         .transactionType(TransactionType.TRANSFER_IN)   // 개인으로 유입
                         .amount(amount)
                         .build()
@@ -450,7 +448,7 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
 
         return new PointShareResponseDto(
                 txOut.getTransactionId(), txIn.getTransactionId(),
-                individual.getWalletId(), group.getWalletId(), storeId, amount,
+                individual.getWalletId(), groupWallet.getWalletId(), storeId, amount,
                 groupBal.getBalance(), indivBal.getBalance(), LocalDateTime.now(), false
         );
     }
@@ -492,7 +490,7 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
     @Transactional(readOnly = true)
     public AvailablePointResponseDto getReclaimablePoints(Long walletId, Long storeId, Long customerId) {
         Wallet groupWallet = validWallet(walletId);
-        Long groupId = groupWallet.getGroup().getGroupId();
+        Long groupId = groupWallet.getGroupId();
 
         if (!groupMemberRepository.existsMember(groupId, customerId)) throw new CustomException(ErrorCode.ONLY_GROUP_MEMBER);
 
@@ -530,19 +528,19 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
         if (srcLots.isEmpty()) return 0L;
 
         Wallet individual = srcLots.get(0).getContributorWallet();
-        if (individual == null || individual.getCustomer() == null ||
-                !individual.getCustomer().getCustomerId().equals(customerId)) {
+        if (individual == null || individual.getCustomerId() == null ||
+                !individual.getCustomerId().equals(customerId)) {
             throw new CustomException(ErrorCode.INCONSISTENT_STATE);
         }
 
         long totalRefunded = 0L;
 
         Map<Long, List<WalletStoreLot>> byStore =
-                srcLots.stream().collect(Collectors.groupingBy(l -> l.getStore().getStoreId()));
+                srcLots.stream().collect(Collectors.groupingBy(WalletStoreLot::getStoreId));
 
         for (Map.Entry<Long, List<WalletStoreLot>> entry : byStore.entrySet()) {
             Long storeId = entry.getKey();
-            Store store = validStore(storeId);
+            validStore(storeId);
 
             WalletStoreBalance groupBal = balanceRepository
                     .lockByWalletIdAndStoreId(groupWallet.getWalletId(), storeId)
@@ -550,7 +548,7 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
             WalletStoreBalance indivBal = balanceRepository
                     .lockByWalletIdAndStoreId(individual.getWalletId(), storeId)
                     .orElseGet(() -> balanceRepository.save(
-                            WalletStoreBalance.builder().wallet(individual).store(store).balance(0L).build()
+                            WalletStoreBalance.builder().wallet(individual).storeId(storeId).balance(0L).build()
                     ));
 
             long movedSum = 0L;
@@ -570,7 +568,7 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
                         )
                         .orElseGet(() -> lotRepository.save(
                                 WalletStoreLot.builder()
-                                        .wallet(individual).store(store)
+                                        .wallet(individual).storeId(storeId)
                                         .amountTotal(0L).amountRemaining(0L)
                                         .acquiredAt(src.getAcquiredAt())
                                         .expiredAt(src.getExpiredAt())
@@ -584,12 +582,12 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
 
                 transactionRepository.save(Transaction.builder()
                         .wallet(individual).relatedWallet(groupWallet)
-                        .customer(individual.getCustomer()).store(store)
+                        .customerId(individual.getCustomerId()).storeId(storeId)
                         .transactionType(TransactionType.TRANSFER_IN).amount(remain).build());
 
                 transactionRepository.save(Transaction.builder()
                         .wallet(groupWallet).relatedWallet(individual)
-                        .customer(individual.getCustomer()).store(store)
+                        .customerId(individual.getCustomerId()).storeId(storeId)
                         .transactionType(TransactionType.TRANSFER_OUT).amount(remain).build());
 
                 movedSum += remain;
@@ -626,18 +624,22 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
 
     @Transactional(readOnly = true)
     public PersonalWalletBalanceResponseDto getPersonalWalletBalance(Long customerId, Pageable pageable) {
-        Customer customer = validCustomer(customerId);
-        Wallet personalWallet = walletRepository.findByCustomerAndWalletType(customer, WalletType.INDIVIDUAL)
+        validCustomer(customerId);
+        Wallet personalWallet = walletRepository.findByCustomerIdAndWalletType(customerId, WalletType.INDIVIDUAL)
                 .orElseThrow(() -> new CustomException(ErrorCode.WALLET_NOT_FOUND));
 
         Page<WalletStoreBalance> page = balanceRepository.findPersonalWalletBalancesByCustomerId(customerId, pageable);
 
+        // storeId로만 저장하므로 Store 정보는 별도 조회 필요
         List<WalletStoreBalanceDetailDto> storeBalances = page.getContent().stream()
-                .map(b -> new WalletStoreBalanceDetailDto(
-                        b.getStore().getStoreId(),
-                        b.getStore().getStoreName(),
-                        b.getBalance(),
-                        b.getUpdatedAt()))
+                .map(b -> {
+                    Store store = storeRepository.findById(b.getStoreId()).orElse(null);
+                    return new WalletStoreBalanceDetailDto(
+                            b.getStoreId(),
+                            store != null ? store.getStoreName() : "Unknown",
+                            b.getBalance(),
+                            b.getUpdatedAt());
+                })
                 .toList();
 
         return new PersonalWalletBalanceResponseDto(
@@ -658,12 +660,16 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
 
         Page<WalletStoreBalance> page = balanceRepository.findGroupWalletBalancesByGroupId(groupId, pageable);
 
+        // storeId로만 저장하므로 Store 정보는 별도 조회 필요
         List<WalletStoreBalanceDetailDto> storeBalances = page.getContent().stream()
-                .map(b -> new WalletStoreBalanceDetailDto(
-                        b.getStore().getStoreId(),
-                        b.getStore().getStoreName(),
-                        b.getBalance(),
-                        b.getUpdatedAt()))
+                .map(b -> {
+                    Store store = storeRepository.findById(b.getStoreId()).orElse(null);
+                    return new WalletStoreBalanceDetailDto(
+                            b.getStoreId(),
+                            store != null ? store.getStoreName() : "Unknown",
+                            b.getBalance(),
+                            b.getUpdatedAt());
+                })
                 .toList();
 
         return new GroupWalletBalanceResponseDto(
@@ -680,19 +686,18 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
     @Transactional(readOnly = true)
     public WalletStoreDetailResponseDto getPersonalWalletStoreDetail(Long customerId, Long storeId, Pageable pageable) {
         // 1. 고객 및 가게 검증
-        Customer customer = validCustomer(customerId);
-
-        Store store = validStore(storeId);                ;
+        validCustomer(customerId);
+        Store store = validStore(storeId);
 
         // 2. 개인지갑 조회
-        Wallet personalWallet = walletRepository.findByCustomerAndWalletType(customer, WalletType.INDIVIDUAL)
+        Wallet personalWallet = walletRepository.findByCustomerIdAndWalletType(customerId, WalletType.INDIVIDUAL)
                 .orElseThrow(() -> new CustomException(ErrorCode.WALLET_NOT_FOUND));
 
         // 3. 현재 잔액 조회
-        WalletStoreBalance balance = balanceRepository.findByWalletAndStore(personalWallet, store)
+        WalletStoreBalance balance = balanceRepository.findByWallet_WalletIdAndStoreId(personalWallet.getWalletId(), storeId)
                 .orElse(WalletStoreBalance.builder()
                         .wallet(personalWallet)
-                        .store(store)
+                        .storeId(storeId)
                         .balance(0L)
                         .build());
 
@@ -737,10 +742,8 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
     @Transactional(readOnly = true)
     public WalletStoreDetailResponseDto getGroupWalletStoreDetail(Long groupId, Long customerId, Long storeId, Pageable pageable) {
         // 1. 고객, 모임, 가게 검증
-        Customer customer = validCustomer(customerId);
-
-        Group group = validGroup(groupId);
-
+        validCustomer(customerId);
+        validGroup(groupId);
         Store store = validStore(storeId);
 
         // 2. 모임 멤버십 검증
@@ -752,10 +755,10 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
         Wallet groupWallet = validGroupWallet(groupId);
 
         // 4. 현재 잔액 조회
-        WalletStoreBalance balance = balanceRepository.findByWalletAndStore(groupWallet, store)
+        WalletStoreBalance balance = balanceRepository.findByWallet_WalletIdAndStoreId(groupWallet.getWalletId(), storeId)
                 .orElse(WalletStoreBalance.builder()
                         .wallet(groupWallet)
-                        .store(store)
+                        .storeId(storeId)
                         .balance(0L)
                         .build());
 
@@ -808,10 +811,10 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
         }
     }
 
-    private void validOwnershipAndMembership(Long userId, Long groupId, Wallet individual, Wallet group) {
-        if (individual.getCustomer() == null || !individual.getCustomer().getCustomerId().equals(userId))
+    private void validOwnershipAndMembership(Long userId, Long groupId, Wallet individual, Wallet groupWallet) {
+        if (individual.getCustomerId() == null || !individual.getCustomerId().equals(userId))
             throw new CustomException(ErrorCode.BAD_REQUEST);
-        if (group.getGroup() == null || !group.getGroup().getGroupId().equals(groupId))
+        if (groupWallet.getGroupId() == null || !groupWallet.getGroupId().equals(groupId))
             throw new CustomException(ErrorCode.BAD_REQUEST);
         validMembership(groupId, userId);
     }

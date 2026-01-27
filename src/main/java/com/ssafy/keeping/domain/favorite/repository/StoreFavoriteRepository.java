@@ -1,8 +1,6 @@
 package com.ssafy.keeping.domain.favorite.repository;
 
 import com.ssafy.keeping.domain.favorite.model.StoreFavorite;
-import com.ssafy.keeping.domain.user.customer.model.Customer;
-import com.ssafy.keeping.domain.store.model.Store;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -13,13 +11,13 @@ import java.util.Optional;
 @Repository
 public interface StoreFavoriteRepository extends JpaRepository<StoreFavorite, Long> {
 
-    Optional<StoreFavorite> findByCustomerAndStore(Customer customer, Store store);
+    Optional<StoreFavorite> findByCustomerIdAndStoreId(Long customerId, Long storeId);
 
-    Optional<StoreFavorite> findByCustomerAndStoreAndActiveTrue(Customer customer, Store store);
+    Optional<StoreFavorite> findByCustomerIdAndStoreIdAndActiveTrue(Long customerId, Long storeId);
 
-    Page<StoreFavorite> findByCustomerAndActiveTrueOrderByFavoritedAtDesc(Customer customer, Pageable pageable);
+    Page<StoreFavorite> findByCustomerIdAndActiveTrueOrderByFavoritedAtDesc(Long customerId, Pageable pageable);
 
-    long countByCustomerAndActiveTrue(Customer customer);
+    long countByCustomerIdAndActiveTrue(Long customerId);
 
-    long countByStoreAndActiveTrue(Store store);
+    long countByStoreIdAndActiveTrue(Long storeId);
 }

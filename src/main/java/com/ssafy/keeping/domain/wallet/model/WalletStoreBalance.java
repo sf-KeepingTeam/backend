@@ -1,6 +1,5 @@
 package com.ssafy.keeping.domain.wallet.model;
 
-import com.ssafy.keeping.domain.store.model.Store;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UpdateTimestamp;
@@ -30,9 +29,8 @@ public class WalletStoreBalance {
     @JoinColumn(name = "wallet_id", nullable = false)
     private Wallet wallet;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "store_id", nullable = false)
-    private Store store;
+    @Column(name = "store_id", nullable = false)
+    private Long storeId;
 
     @Column(name = "balance", nullable = false)
     private Long balance;

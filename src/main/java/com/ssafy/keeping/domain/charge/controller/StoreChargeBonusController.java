@@ -3,7 +3,6 @@ package com.ssafy.keeping.domain.charge.controller;
 import com.ssafy.keeping.domain.charge.dto.response.PublicChargeBonusResponseDto;
 import com.ssafy.keeping.domain.charge.model.ChargeBonus;
 import com.ssafy.keeping.domain.charge.repository.ChargeBonusRepository;
-import com.ssafy.keeping.domain.store.model.Store;
 import com.ssafy.keeping.domain.store.repository.StoreRepository;
 import com.ssafy.keeping.global.exception.CustomException;
 import com.ssafy.keeping.global.exception.constants.ErrorCode;
@@ -43,10 +42,10 @@ public class StoreChargeBonusController {
 
         log.info("고객용 충전 보너스 목록 조회 요청 - 가게ID: {}", storeId);
 
-        Store store = storeRepository.findById(storeId)
+        storeRepository.findById(storeId)
                 .orElseThrow(() -> new CustomException(ErrorCode.STORE_NOT_FOUND));
 
-        List<ChargeBonus> bonusList = chargeBonusRepository.findByStore(store);
+        List<ChargeBonus> bonusList = chargeBonusRepository.findByStoreId(storeId);
 
         List<PublicChargeBonusResponseDto> responseDtoList = bonusList.stream()
                 .map(PublicChargeBonusResponseDto::from)

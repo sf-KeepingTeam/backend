@@ -117,7 +117,7 @@ public class CancelService {
                 .orElseThrow(() -> new CustomException(ErrorCode.TRANSACTION_NOT_FOUND));
 
         // 2. 본인 거래 확인
-        if (!originalTransaction.getCustomer().getCustomerId().equals(customerId)) {
+        if (!originalTransaction.getCustomerId().equals(customerId)) {
             throw new CustomException(ErrorCode.UNAUTHORIZED_ACCESS);
         }
 
@@ -128,7 +128,7 @@ public class CancelService {
 
         // 4. 포인트가 모두 남아있는지 확인 (🔒 비관적 락)
         WalletStoreLot lot = walletStoreLotRepository
-                .findByOriginChargeTransactionWithLock(originalTransaction)
+                .findByOriginChargeTransactionIdWithLock(originalTransaction.getTransactionId())
                 .orElseThrow(() -> new CustomException(ErrorCode.WALLET_NOT_FOUND));
 
         if (!lot.getAmountRemaining().equals(lot.getAmountTotal())) {
@@ -155,8 +155,8 @@ public class CancelService {
         // 1. 취소 Transaction 생성
         Transaction cancelTransaction = Transaction.builder()
                 .wallet(originalTransaction.getWallet())
-                .customer(originalTransaction.getCustomer())
-                .store(originalTransaction.getStore())
+                .customerId(originalTransaction.getCustomerId())
+                .storeId(originalTransaction.getStoreId())
                 .transactionType(TransactionType.CANCEL_CHARGE)
                 .amount(originalTransaction.getAmount())
                 .transactionUniqueNo(originalTransaction.getTransactionUniqueNo())
@@ -166,7 +166,7 @@ public class CancelService {
 
         // 2. WalletStoreLot 취소 처리
         WalletStoreLot lot = walletStoreLotRepository
-                .findByOriginChargeTransaction(originalTransaction)
+                .findByOriginChargeTransaction_TransactionId(originalTransaction.getTransactionId())
                 .orElseThrow(() -> new CustomException(ErrorCode.WALLET_NOT_FOUND));
 
         lot.setAmountRemaining(0L);
@@ -176,13 +176,13 @@ public class CancelService {
 
         // 3. WalletStoreBalance 차감
         WalletStoreBalance balance = walletStoreBalanceRepository
-                .findByWalletAndStore(originalTransaction.getWallet(), originalTransaction.getStore())
+                .findByWallet_WalletIdAndStoreId(originalTransaction.getWallet().getWalletId(), originalTransaction.getStoreId())
                 .orElseThrow(() -> new CustomException(ErrorCode.WALLET_NOT_FOUND));
 
         balance.subtractBalance(lot.getAmountTotal());
 
         log.info("[취소] 완료 - 고객ID: {}, 원금: {}원, 보너스: {}원, 총회수: {}P",
-                originalTransaction.getCustomer().getCustomerId(),
+                originalTransaction.getCustomerId(),
                 originalTransaction.getAmount(),
                 lot.getAmountTotal() - originalTransaction.getAmount(),
                 lot.getAmountTotal());
@@ -200,14 +200,14 @@ public class CancelService {
     /**
      * Transaction을 CancelListResponseDto로 변환
      */
-    private CancelListResponseDto convertToDto(Transaction transaction) {
+    private CancelListResponseDto convertToDto(Transaction transaction, String storeName) {
         WalletStoreLot lot = walletStoreLotRepository
-                .findByOriginChargeTransaction(transaction)
+                .findByOriginChargeTransaction_TransactionId(transaction.getTransactionId())
                 .orElseThrow(() -> new CustomException(ErrorCode.WALLET_NOT_FOUND));
 
         return CancelListResponseDto.builder()
                 .transactionUniqueNo(transaction.getTransactionUniqueNo())
-                .storeName(transaction.getStore().getStoreName())
+                .storeName(storeName)
                 .paymentAmount(transaction.getAmount())
                 .transactionTime(transaction.getCreatedAt())
                 .remainingBalance(lot.getAmountRemaining())

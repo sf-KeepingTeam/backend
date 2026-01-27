@@ -37,7 +37,7 @@ public interface PaymentReservationRepository extends JpaRepository<PaymentReser
     /**
      * 고객의 특정 상태 예약 목록 조회
      */
-    List<PaymentReservation> findByCustomerCustomerIdAndStatus(Long customerId, ReservationStatus status);
+    List<PaymentReservation> findByCustomerIdAndStatus(Long customerId, ReservationStatus status);
 
     /**
      * 만료된 예약 조회 (스케줄러용)
@@ -57,7 +57,7 @@ public interface PaymentReservationRepository extends JpaRepository<PaymentReser
      */
     @Query("""
         SELECT COUNT(pr) FROM PaymentReservation pr
-        WHERE pr.customer.customerId = :customerId
+        WHERE pr.customerId = :customerId
         AND pr.status = :status
         AND pr.createdAt BETWEEN :startDate AND :endDate
         """)

@@ -31,7 +31,7 @@ public class NotificationResponseDto {
                 .notificationType(notification.getNotificationType())
                 .receiverType(notification.getReceiverType())
                 .receiverId(notification.getReceiverId())
-                .receiverName(notification.getReceiverName())
+                .receiverName(null)  // 서비스 레이어에서 별도 조회 필요
                 .createdAt(notification.getCreatedAt().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
                 .build();
     }
