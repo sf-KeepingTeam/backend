@@ -1,9 +1,6 @@
 package com.ssafy.keeping.domain.store.model;
 
 import com.ssafy.keeping.domain.user.owner.model.Owner;
-import com.ssafy.keeping.domain.payment.transactions.model.Transaction;
-import com.ssafy.keeping.domain.wallet.model.WalletStoreBalance;
-import com.ssafy.keeping.domain.wallet.model.WalletStoreLot;
 import com.ssafy.keeping.domain.store.constant.StoreStatus;
 import com.ssafy.keeping.domain.store.dto.StoreEditRequestDto;
 import jakarta.persistence.*;
@@ -16,7 +13,6 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Objects;
 
 @Entity
@@ -78,16 +74,6 @@ public class Store {
 
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
-
-    // 연관관계
-    @OneToMany(mappedBy = "store", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<WalletStoreBalance> walletStoreBalances;
-
-    @OneToMany(mappedBy = "store", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<WalletStoreLot> walletStoreLots;
-
-    @OneToMany(mappedBy = "store", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<Transaction> transactions;
 
     public void patchStore(StoreEditRequestDto requestDto, String imgUrl) {
         if (!Objects.equals(this.storeName, requestDto.getStoreName())) this.storeName = requestDto.getStoreName();

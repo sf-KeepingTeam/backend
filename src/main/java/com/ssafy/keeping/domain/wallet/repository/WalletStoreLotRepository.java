@@ -18,7 +18,12 @@ import java.util.Optional;
 
 @Repository
 public interface WalletStoreLotRepository extends JpaRepository<WalletStoreLot, Long> {
-    
+
+    /**
+     * 가게 ID로 모든 로트 조회
+     */
+    List<WalletStoreLot> findByStore_StoreId(Long storeId);
+
     Optional<WalletStoreLot> findByOriginChargeTransaction(Transaction originChargeTransaction);
 
     /**

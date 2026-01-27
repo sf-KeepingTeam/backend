@@ -26,6 +26,11 @@ public interface WalletStoreBalanceRepository extends JpaRepository<WalletStoreB
     List<WalletStoreBalance> findByWallet_WalletId(Long walletId);
 
     /**
+     * 가게 ID로 모든 잔액 조회
+     */
+    List<WalletStoreBalance> findByStore_StoreId(Long storeId);
+
+    /**
      * 지갑과 가게로 잔액 조회
      */
     Optional<WalletStoreBalance> findByWalletAndStore(Wallet wallet, Store store);

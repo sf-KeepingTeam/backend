@@ -22,6 +22,11 @@ import java.util.Optional;
 public interface TransactionRepository extends JpaRepository<Transaction, Long> {
 
     /**
+     * 가게 ID로 모든 거래 조회
+     */
+    List<Transaction> findByStore_StoreId(Long storeId);
+
+    /**
      * transactionUniqueNo로 거래 조회
      */
     Optional<Transaction> findByTransactionUniqueNo(String transactionUniqueNo);
