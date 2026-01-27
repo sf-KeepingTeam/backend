@@ -21,6 +21,11 @@ import org.springframework.data.domain.Pageable;
 public interface WalletStoreBalanceRepository extends JpaRepository<WalletStoreBalance, Long> {
 
     /**
+     * 지갑 ID로 모든 잔액 조회
+     */
+    List<WalletStoreBalance> findByWallet_WalletId(Long walletId);
+
+    /**
      * 지갑과 가게로 잔액 조회
      */
     Optional<WalletStoreBalance> findByWalletAndStore(Wallet wallet, Store store);

@@ -109,8 +109,7 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
         Wallet groupWallet = validGroupWallet(group.getGroupId());
 
         List<WalletStoreBalanceResponseDto> groupStoreBalanceDtoList =
-                Optional.ofNullable(groupWallet.getWalletStoreBalances())
-                        .orElseGet(Collections::emptyList)
+                balanceRepository.findByWallet_WalletId(groupWallet.getWalletId())
                         .stream()
                         .map(b -> new WalletStoreBalanceResponseDto(
                                 b.getBalanceId(),
@@ -134,8 +133,7 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
         Wallet groupWallet = validGroupWallet(group.getGroupId());
 
         List<WalletStoreBalanceResponseDto> groupStoreBalanceDtoList =
-                Optional.ofNullable(groupWallet.getWalletStoreBalances())
-                        .orElseGet(Collections::emptyList)
+                balanceRepository.findByWallet_WalletId(groupWallet.getWalletId())
                         .stream()
                         .map(b -> new WalletStoreBalanceResponseDto(
                                 b.getBalanceId(),
