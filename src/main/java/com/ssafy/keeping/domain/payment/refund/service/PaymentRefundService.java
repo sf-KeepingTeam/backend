@@ -22,6 +22,7 @@ import com.ssafy.keeping.domain.wallet.model.WalletLotMove;
 import com.ssafy.keeping.domain.wallet.model.WalletStoreBalance;
 import com.ssafy.keeping.domain.wallet.model.WalletStoreLot;
 import com.ssafy.keeping.domain.wallet.repository.WalletLotMoveRepository;
+import com.ssafy.keeping.domain.wallet.repository.WalletRepository;
 import com.ssafy.keeping.domain.wallet.repository.WalletStoreBalanceRepository;
 import com.ssafy.keeping.domain.wallet.repository.WalletStoreLotRepository;
 import com.ssafy.keeping.domain.payment.transactions.model.Transaction;
@@ -56,10 +57,18 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class PaymentRefundService {
 
+    // === Payment 도메인 내부 ===
     private final TransactionRepository transactionRepository;
+
+    // === 외부 도메인 의존성 (MSA 전환 시 API 호출로 대체) ===
+    // Wallet 도메인: WalletService API 호출로 전환 (restoreBalance, restoreLot 등)
+    private final WalletRepository walletRepository;
     private final WalletStoreBalanceRepository walletStoreBalanceRepository;
     private final WalletLotMoveRepository walletLotMoveRepository;
+    // Store 도메인: Pattern 3 (데이터 복제) - Transaction에 storeName 스냅샷 추가 고려
     private final StoreRepository storeRepository;
+
+    // === 도메인 서비스 ===
     private final IdempotencyService idempotencyService;
     private final NotificationService notificationService;
     @Qualifier("canonicalObjectMapper")
@@ -167,8 +176,9 @@ public class PaymentRefundService {
 
         // 취소 원장 생성 (CANCEL_USE)
         LocalDateTime now = LocalDateTime.now(clock);
+        Long originalWalletId = original.getWalletId();
         Transaction cancelTx = Transaction.builder()
-                .wallet(original.getWallet())
+                .walletId(originalWalletId)
                 .customerId(original.getCustomerId())
                 .storeId(original.getStoreId())
                 .transactionType(TransactionType.CANCEL_USE)
@@ -178,9 +188,10 @@ public class PaymentRefundService {
         transactionRepository.save(cancelTx);
 
         // 잔액 복원: wallet_store_balances += original.amount
-        Wallet wallet = original.getWallet();
+        Wallet wallet = walletRepository.findById(originalWalletId)
+                .orElseThrow(() -> new CustomException(ErrorCode.WALLET_NOT_FOUND));
         Long originalStoreId = original.getStoreId();
-        WalletStoreBalance balance = walletStoreBalanceRepository.findByWalletIdAndStoreIdForUpdate(wallet.getWalletId(), originalStoreId)
+        WalletStoreBalance balance = walletStoreBalanceRepository.findByWalletIdAndStoreIdForUpdate(originalWalletId, originalStoreId)
                 .orElseGet(() -> {
                     try {
                         return walletStoreBalanceRepository.save(WalletStoreBalance.builder()
@@ -189,7 +200,7 @@ public class PaymentRefundService {
                                 .balance(0L)
                                 .build());
                     } catch (DataIntegrityViolationException e) {
-                        return walletStoreBalanceRepository.findByWalletIdAndStoreIdForUpdate(wallet.getWalletId(), originalStoreId)
+                        return walletStoreBalanceRepository.findByWalletIdAndStoreIdForUpdate(originalWalletId, originalStoreId)
                                 .orElseThrow(() -> e);
                     }
                 });

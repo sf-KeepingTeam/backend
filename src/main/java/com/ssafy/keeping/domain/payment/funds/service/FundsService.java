@@ -52,15 +52,20 @@ public class FundsService {
         public Long getUsed()  { return used; }
     }
 
+    // === Wallet 도메인 (MSA 전환 시 WalletService API 호출로 대체) ===
     private final WalletStoreBalanceRepository balanceRepository;
     private final WalletStoreLotRepository lotRepository;
     private final WalletLotMoveRepository lotMoveRepository;
-
     private final WalletRepository walletRepository;
+
+    // === 외부 도메인 의존성 (MSA 전환 시 제거 가능 - PaymentIntent에 이미 스냅샷 저장) ===
+    // User/Store/Menu: PaymentIntent 생성 시점에 이미 검증됨, 여기서는 불필요
+    // 현재 미사용 상태 - 추후 제거 가능
     private final CustomerRepository customerRepository;
     private final StoreRepository storeRepository;
     private final MenuRepository menuRepository;
 
+    // === Payment 도메인 내부 ===
     private final TransactionRepository txRepository;
     private final TransactionItemRepository txItemRepository;
     private final PaymentIntentItemRepository intentItemRepository;
@@ -115,11 +120,9 @@ public class FundsService {
             throw new CustomException(ErrorCode.FUNDS_INVARIANT_VIOLATION);
         }
 
-        Wallet walletRef   = walletRepository.getReferenceById(walletId);
-
         // 거래 내역 생성 (USE)
         Transaction tx = Transaction.builder()
-                .wallet(walletRef)
+                .walletId(walletId)
                 .customerId(intent.getCustomerId())
                 .storeId(storeId)
                 .transactionType(TransactionType.USE)

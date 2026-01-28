@@ -51,15 +51,24 @@ import static com.ssafy.keeping.global.util.TxUtils.afterCommit;
 
 @Service
 @RequiredArgsConstructor
-public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나 추후 합치겠습니다.
-    private final StoreRepository storeRepository;
+public class WalletService {
+    // === Wallet 도메인 내부 Repository ===
     private final WalletRepository walletRepository;
     private final WalletStoreBalanceRepository balanceRepository;
-    private final GroupRepository groupRepository;
-    private final CustomerRepository customerRepository;
-    private final TransactionRepository transactionRepository;
     private final WalletStoreLotRepository lotRepository;
+
+    // === 외부 도메인 의존성 (MSA 전환 시 API 호출로 대체) ===
+    // Store 도메인: Pattern 3 (데이터 복제) - WalletStoreBalance에 storeName 스냅샷 추가 예정
+    private final StoreRepository storeRepository;
+    // Group 도메인: Pattern 1 (호출자 검증) - Controller에서 GroupService API 호출로 전환
+    private final GroupRepository groupRepository;
     private final GroupMemberRepository groupMemberRepository;
+    // User 도메인: Pattern 1 (호출자 검증) - Controller에서 CustomerService API 호출로 전환
+    private final CustomerRepository customerRepository;
+    // Payment 도메인: 동일 Bounded Context로 유지 또는 Saga 패턴으로 분리
+    private final TransactionRepository transactionRepository;
+
+    // === 도메인 서비스 ===
     private final NotificationService notificationService;
 
     private final IdempotencyService idempotencyService;
@@ -243,7 +252,7 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
                     .findByWalletIdAndStoreIdAndOriginChargeTxIdAndSourceType(
                             groupWallet.getWalletId(),
                             storeId,
-                            src.getOriginChargeTransaction().getTransactionId(),
+                            src.getOriginChargeTransactionId(),
                             LotSourceType.TRANSFER_IN
                     )
                     .orElseGet(() -> lotRepository.save(
@@ -257,7 +266,7 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
                                     .sourceType(LotSourceType.TRANSFER_IN)
                                     .contributorWallet(individual)
                                     .lotStatus(LotStatus.ACTIVE)
-                                    .originChargeTransaction(src.getOriginChargeTransaction())
+                                    .originChargeTransactionId(src.getOriginChargeTransactionId())
                                     .build()
                     ));
             dst.sharePoints(movable); // 총액·잔량 가산
@@ -271,8 +280,8 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
         // 5) 거래기록 2건(반드시 store 세팅)
         Transaction txOut = transactionRepository.save(
                 Transaction.builder()
-                        .wallet(individual)
-                        .relatedWallet(groupWallet)
+                        .walletId(individual.getWalletId())
+                        .relatedWalletId(groupWallet.getWalletId())
                         .customerId(userId)
                         .storeId(storeId)
                         .transactionType(TransactionType.TRANSFER_OUT) // 출금
@@ -281,8 +290,8 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
         );
         Transaction txIn = transactionRepository.save(
                 Transaction.builder()
-                        .wallet(groupWallet) // 수신 지갑
-                        .relatedWallet(individual)
+                        .walletId(groupWallet.getWalletId()) // 수신 지갑
+                        .relatedWalletId(individual.getWalletId())
                         .customerId(userId)
                         .storeId(storeId)
                         .transactionType(TransactionType.TRANSFER_IN)
@@ -399,7 +408,7 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
                     .findByWalletIdAndStoreIdAndOriginChargeTxIdAndSourceType(
                             individual.getWalletId(),
                             storeId,
-                            src.getOriginChargeTransaction().getTransactionId(),
+                            src.getOriginChargeTransactionId(),
                             LotSourceType.TRANSFER_IN // 내부 이관은 TRANSFER_IN 재사용
                     )
                     .orElseGet(() -> lotRepository.save(
@@ -413,7 +422,7 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
                                     .sourceType(LotSourceType.TRANSFER_IN)
                                     .contributorWallet(groupWallet) // 출처 표기
                                     .lotStatus(LotStatus.ACTIVE)
-                                    .originChargeTransaction(src.getOriginChargeTransaction())
+                                    .originChargeTransactionId(src.getOriginChargeTransactionId())
                                     .build()
                     ));
             dst.sharePoints(movable);
@@ -427,8 +436,8 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
         // 거래 기록 2건
         Transaction txOut = transactionRepository.save(
                 Transaction.builder()
-                        .wallet(groupWallet)
-                        .relatedWallet(individual)
+                        .walletId(groupWallet.getWalletId())
+                        .relatedWalletId(individual.getWalletId())
                         .customerId(userId)
                         .storeId(storeId)
                         .transactionType(TransactionType.TRANSFER_OUT)           // 그룹에서 회수
@@ -437,8 +446,8 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
         );
         Transaction txIn = transactionRepository.save(
                 Transaction.builder()
-                        .wallet(individual)
-                        .relatedWallet(groupWallet)
+                        .walletId(individual.getWalletId())
+                        .relatedWalletId(groupWallet.getWalletId())
                         .customerId(userId)
                         .storeId(storeId)
                         .transactionType(TransactionType.TRANSFER_IN)   // 개인으로 유입
@@ -563,7 +572,7 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
                         .findByWalletIdAndStoreIdAndOriginChargeTxIdAndSourceType(
                                 individual.getWalletId(),
                                 storeId,
-                                src.getOriginChargeTransaction().getTransactionId(),
+                                src.getOriginChargeTransactionId(),
                                 LotSourceType.TRANSFER_IN
                         )
                         .orElseGet(() -> lotRepository.save(
@@ -575,18 +584,18 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
                                         .sourceType(LotSourceType.TRANSFER_IN)
                                         .contributorWallet(groupWallet)
                                         .lotStatus(LotStatus.ACTIVE)
-                                        .originChargeTransaction(src.getOriginChargeTransaction())
+                                        .originChargeTransactionId(src.getOriginChargeTransactionId())
                                         .build()
                         ));
                 dst.sharePoints(remain);
 
                 transactionRepository.save(Transaction.builder()
-                        .wallet(individual).relatedWallet(groupWallet)
+                        .walletId(individual.getWalletId()).relatedWalletId(groupWallet.getWalletId())
                         .customerId(individual.getCustomerId()).storeId(storeId)
                         .transactionType(TransactionType.TRANSFER_IN).amount(remain).build());
 
                 transactionRepository.save(Transaction.builder()
-                        .wallet(groupWallet).relatedWallet(individual)
+                        .walletId(groupWallet.getWalletId()).relatedWalletId(individual.getWalletId())
                         .customerId(individual.getCustomerId()).storeId(storeId)
                         .transactionType(TransactionType.TRANSFER_OUT).amount(remain).build());
 
@@ -780,16 +789,37 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
     }
 
     // ===== Validation Helpers =====
+    // MSA 전환 대비: 외부 도메인 Repository 직접 접근은 향후 API 호출로 대체
+    //
+    // 전환 전략:
+    // - validCustomer: Pattern 1 (Controller에서 existsById 검증) → 단순 존재 확인만 필요
+    // - validGroup: Pattern 1 (Controller에서 existsById 검증) → 단순 존재 확인만 필요
+    // - validStore: Pattern 3 (데이터 복제) → 가게 이름 조회 필요, Balance에 storeName 스냅샷 추가
+    // - validMembership: Pattern 1 (Controller에서 GroupService API 호출) → 멤버십 검증
+
+    /**
+     * 고객 존재 확인
+     * MSA 전환: Pattern 1 - Controller에서 CustomerService.existsById() API 호출로 대체
+     */
     private Customer validCustomer(Long customerId) {
         return customerRepository.findById(customerId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
     }
 
+    /**
+     * 그룹 존재 확인
+     * MSA 전환: Pattern 1 - Controller에서 GroupService.existsById() API 호출로 대체
+     */
     private Group validGroup(Long groupId) {
         return groupRepository.findById(groupId)
                 .orElseThrow(() -> new CustomException(ErrorCode.GROUP_NOT_FOUND));
     }
 
+    /**
+     * 가게 존재 확인 및 이름 조회
+     * MSA 전환: Pattern 3 (데이터 복제) - WalletStoreBalance에 storeName 스냅샷 필드 추가
+     * 가게 이름이 필요한 경우가 많아 단순 검증보다 데이터 복제가 효율적
+     */
     private Store validStore(Long storeId) {
         return storeRepository.findById(storeId)
                 .orElseThrow(() -> new CustomException(ErrorCode.STORE_NOT_FOUND));
@@ -805,6 +835,18 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
                 .orElseThrow(() -> new CustomException(ErrorCode.WALLET_NOT_FOUND));
     }
 
+    /**
+     * 그룹 지갑 ID 조회 (외부 도메인에서 호출용)
+     * GroupService가 WalletRepository를 직접 접근하지 않도록 함
+     */
+    public Long getGroupWalletId(Long groupId) {
+        return validGroupWallet(groupId).getWalletId();
+    }
+
+    /**
+     * 그룹 멤버십 검증
+     * MSA 전환: Pattern 1 - Controller에서 GroupService.isMember() API 호출로 대체
+     */
     private void validMembership(Long groupId, Long customerId) {
         if (!groupMemberRepository.existsMember(groupId, customerId)) {
             throw new CustomException(ErrorCode.ONLY_GROUP_MEMBER);
