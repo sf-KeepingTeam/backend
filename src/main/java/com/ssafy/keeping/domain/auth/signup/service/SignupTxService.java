@@ -13,7 +13,6 @@ import com.ssafy.keeping.domain.user.customer.model.Customer;
 import com.ssafy.keeping.domain.user.customer.service.CustomerService;
 import com.ssafy.keeping.domain.user.owner.model.Owner;
 import com.ssafy.keeping.domain.user.owner.service.OwnerService;
-import com.ssafy.keeping.domain.wallet.service.WalletService;
 import com.ssafy.keeping.global.exception.CustomException;
 import com.ssafy.keeping.global.exception.constants.ErrorCode;
 import com.ssafy.keeping.global.outbox.service.OutboxPublisher;
@@ -28,10 +27,13 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 /**
  * 회원가입 트랜잭션 서비스
  *
- * 이벤트 기반 분리:
+ * 이벤트 기반 분리 (MSA 전환 완료):
  * - Customer 생성 후 CustomerCreated 이벤트 발행
- * - Wallet 생성은 동기로도 처리 (호환성), Outbox로도 발행 (비동기 처리)
+ * - Wallet 생성은 CustomerCreatedEventHandler에서 비동기 처리
  * - PIN 저장은 Auth 도메인 내에서 직접 처리
+ *
+ * 참고: Wallet 생성이 비동기이므로 회원가입 직후 Wallet 관련 작업 시
+ * WalletService.createOrGetIndividualWallet()의 멱등성에 의존
  */
 @Service
 @RequiredArgsConstructor
@@ -41,7 +43,6 @@ public class SignupTxService {
     private final SignupTicketService signupTicketService;
     private final CustomerService customerService;
     private final OwnerService ownerService;
-    private final WalletService walletService;
     private final PinAuthService pinAuthService;
     private final OutboxPublisher outboxPublisher;
 
@@ -63,14 +64,11 @@ public class SignupTxService {
             // 1. 고객 생성 (User 도메인)
             Customer saved = customerService.registerCustomer(req, payload);
 
-            // 2. 지갑 생성 (동기 - 기존 호환성 유지)
-            walletService.createOrGetIndividualWallet(saved.getCustomerId());
-
-            // 3. PIN 저장 (Auth 도메인 내)
+            // 2. PIN 저장 (Auth 도메인 내)
             pinAuthService.setOrUpdatePin(saved.getCustomerId(), req.pin());
 
-            // 4. CustomerCreated 이벤트 발행 (비동기 후속 처리용)
-            // 현재는 Wallet이 동기로 생성되므로 추가 핸들러가 필요할 때 활용
+            // 3. CustomerCreated 이벤트 발행 (Wallet 생성 등 후속 처리)
+            // CustomerCreatedEventHandler에서 비동기로 Wallet 생성
             outboxPublisher.publish(
                     "Customer",
                     saved.getCustomerId().toString(),
