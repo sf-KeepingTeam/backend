@@ -1,5 +1,6 @@
 package com.ssafy.keeping.domain.group.model;
 
+import com.ssafy.keeping.domain.group.constant.GroupStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
@@ -11,6 +12,7 @@ import java.util.Objects;
 
 @Entity
 @Getter
+@Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
@@ -34,6 +36,15 @@ public class Group {
     @Column(name = "group_description", nullable = false, length = 150)
     private String groupDescription;
 
+    /**
+     * 그룹 상태 (Saga 패턴용)
+     * null인 경우 ACTIVE로 간주 (하위 호환성)
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", length = 20)
+    @Builder.Default
+    private GroupStatus status = GroupStatus.ACTIVE;
+
     @CreatedDate
     @Column(name = "created_at", updatable = false, nullable = false)
     private LocalDateTime createdAt;
@@ -48,5 +59,33 @@ public class Group {
 
         if (!Objects.equals(groupDescription, this.groupDescription))
             this.groupDescription = groupDescription;
+    }
+
+    /**
+     * 해산 시작
+     */
+    public void startDisband() {
+        this.status = GroupStatus.DISBANDING;
+    }
+
+    /**
+     * 해산 완료
+     */
+    public void completeDisband() {
+        this.status = GroupStatus.DISBANDED;
+    }
+
+    /**
+     * 활성 상태인지 확인
+     */
+    public boolean isActive() {
+        return this.status == null || this.status == GroupStatus.ACTIVE;
+    }
+
+    /**
+     * 해산 중인지 확인
+     */
+    public boolean isDisbanding() {
+        return this.status == GroupStatus.DISBANDING;
     }
 }
