@@ -23,14 +23,14 @@ public interface WalletStoreLotRepository extends JpaRepository<WalletStoreLot, 
      */
     List<WalletStoreLot> findByStoreId(Long storeId);
 
-    Optional<WalletStoreLot> findByOriginChargeTransaction_TransactionId(Long transactionId);
+    Optional<WalletStoreLot> findByOriginChargeTransactionId(Long transactionId);
 
     /**
      * 결제 취소 시 정합성 보장을 위한 비관적 락
      * SELECT ... FOR UPDATE로 해당 로트를 독점적으로 잠금
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT l FROM WalletStoreLot l WHERE l.originChargeTransaction.transactionId = :transactionId")
+    @Query("SELECT l FROM WalletStoreLot l WHERE l.originChargeTransactionId = :transactionId")
     Optional<WalletStoreLot> findByOriginChargeTransactionIdWithLock(@Param("transactionId") Long transactionId);
 
     // 개인 LOT 소진용: FIFO + 행잠금
@@ -48,8 +48,8 @@ public interface WalletStoreLotRepository extends JpaRepository<WalletStoreLot, 
     @Query("""
        select l from WalletStoreLot l
        where l.wallet.walletId = :walletId
-         and l.store.storeId  = :storeId
-         and l.originChargeTransaction.transactionId = :originTxId
+         and l.storeId = :storeId
+         and l.originChargeTransactionId = :originTxId
          and l.sourceType = :sourceType
     """)
     Optional<WalletStoreLot> findByWalletIdAndStoreIdAndOriginChargeTxIdAndSourceType(

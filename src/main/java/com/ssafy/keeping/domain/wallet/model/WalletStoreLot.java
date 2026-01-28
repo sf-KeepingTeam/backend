@@ -1,6 +1,5 @@
 package com.ssafy.keeping.domain.wallet.model;
 
-import com.ssafy.keeping.domain.payment.transactions.model.Transaction;
 import com.ssafy.keeping.domain.wallet.constant.LotSourceType;
 import com.ssafy.keeping.domain.wallet.constant.LotStatus;
 import jakarta.persistence.*;
@@ -56,9 +55,8 @@ public class WalletStoreLot {
     @JoinColumn(name = "contributor_wallet_id")
     private Wallet contributorWallet;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "origin_charge_tx_id", nullable = false)
-    private Transaction originChargeTransaction;
+    @Column(name = "origin_charge_tx_id", nullable = false)
+    private Long originChargeTransactionId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "lot_status", nullable = false, length = 20)
@@ -67,9 +65,8 @@ public class WalletStoreLot {
     @Column(name = "canceled_at")
     private LocalDateTime canceledAt;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "cancel_tx_id")
-    private Transaction cancelTransaction;
+    @Column(name = "cancel_tx_id")
+    private Long cancelTransactionId;
 
     // 포인트 사용 메서드
     public void usePoints(Long amount) {

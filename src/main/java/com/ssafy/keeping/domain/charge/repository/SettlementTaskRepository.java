@@ -36,7 +36,7 @@ public interface SettlementTaskRepository extends JpaRepository<SettlementTask, 
      */
     @Query("SELECT st FROM SettlementTask st " +
            "JOIN Transaction t ON st.transactionId = t.transactionId " +
-           "JOIN WalletStoreLot wsl ON wsl.originChargeTransaction.transactionId = t.transactionId " +
+           "JOIN WalletStoreLot wsl ON wsl.originChargeTransactionId = t.transactionId " +
            "WHERE st.status = 'PENDING' " +
            "AND t.customerId = :customerId " +
            "AND t.transactionType = 'CHARGE' " +
