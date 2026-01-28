@@ -354,6 +354,7 @@ public class PrepaymentService {
                 .orElseGet(() -> WalletStoreBalance.builder()
                         .wallet(wallet)
                         .storeId(store.getStoreId())
+                        .storeNameSnapshot(store.getStoreName())
                         .balance(0L)
                         .build());
 

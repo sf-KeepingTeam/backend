@@ -191,12 +191,17 @@ public class PaymentRefundService {
         Wallet wallet = walletRepository.findById(originalWalletId)
                 .orElseThrow(() -> new CustomException(ErrorCode.WALLET_NOT_FOUND));
         Long originalStoreId = original.getStoreId();
+        // Pattern 3: 스냅샷용 가게 이름 조회 (MSA 전환 시 제거 예정)
+        String storeName = storeRepository.findById(originalStoreId)
+                .map(s -> s.getStoreName())
+                .orElse(null);
         WalletStoreBalance balance = walletStoreBalanceRepository.findByWalletIdAndStoreIdForUpdate(originalWalletId, originalStoreId)
                 .orElseGet(() -> {
                     try {
                         return walletStoreBalanceRepository.save(WalletStoreBalance.builder()
                                 .wallet(wallet)
                                 .storeId(originalStoreId)
+                                .storeNameSnapshot(storeName)
                                 .balance(0L)
                                 .build());
                     } catch (DataIntegrityViolationException e) {

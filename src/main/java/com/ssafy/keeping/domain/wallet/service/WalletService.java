@@ -221,7 +221,7 @@ public class WalletService {
             throw new CustomException(ErrorCode.BAD_REQUEST);
         validOwnershipAndMembership(userId, groupId, individual, groupWallet);
 
-        validStore(storeId);
+        Store store = validStore(storeId);
 
         // 2) 잔액 행잠금 조회
         WalletStoreBalance indivBal = balanceRepository.lockByWalletIdAndStoreId(individual.getWalletId(), storeId)
@@ -231,7 +231,12 @@ public class WalletService {
 
         WalletStoreBalance groupBal = balanceRepository.lockByWalletIdAndStoreId(groupWallet.getWalletId(), storeId)
                 .orElseGet(() -> balanceRepository.save(
-                        WalletStoreBalance.builder().wallet(groupWallet).storeId(storeId).balance(0L).build()
+                        WalletStoreBalance.builder()
+                                .wallet(groupWallet)
+                                .storeId(storeId)
+                                .storeNameSnapshot(store.getStoreName())
+                                .balance(0L)
+                                .build()
                 ));
 
         // 3) LOT 차감 및 수신 LOT 적립(FIFO)
@@ -370,12 +375,17 @@ public class WalletService {
             throw new CustomException(ErrorCode.BAD_REQUEST);
         validOwnershipAndMembership(userId, groupId, individual, groupWallet);
 
-        validStore(storeId);
+        Store store = validStore(storeId);
 
         // 잔액 행잠금
         WalletStoreBalance indivBal = balanceRepository.lockByWalletIdAndStoreId(individual.getWalletId(), storeId)
                 .orElseGet(() -> balanceRepository.save(
-                        WalletStoreBalance.builder().wallet(individual).storeId(storeId).balance(0L).build()
+                        WalletStoreBalance.builder()
+                                .wallet(individual)
+                                .storeId(storeId)
+                                .storeNameSnapshot(store.getStoreName())
+                                .balance(0L)
+                                .build()
                 ));
         WalletStoreBalance groupBal = balanceRepository.lockByWalletIdAndStoreId(groupWallet.getWalletId(), storeId)
                 .orElseThrow(() -> new CustomException(ErrorCode.BEFORE_GROUP_CHARGE)); // 그룹에 해당 매장 잔액이 있어야 함
@@ -549,7 +559,7 @@ public class WalletService {
 
         for (Map.Entry<Long, List<WalletStoreLot>> entry : byStore.entrySet()) {
             Long storeId = entry.getKey();
-            validStore(storeId);
+            Store store = validStore(storeId);
 
             WalletStoreBalance groupBal = balanceRepository
                     .lockByWalletIdAndStoreId(groupWallet.getWalletId(), storeId)
@@ -557,7 +567,12 @@ public class WalletService {
             WalletStoreBalance indivBal = balanceRepository
                     .lockByWalletIdAndStoreId(individual.getWalletId(), storeId)
                     .orElseGet(() -> balanceRepository.save(
-                            WalletStoreBalance.builder().wallet(individual).storeId(storeId).balance(0L).build()
+                            WalletStoreBalance.builder()
+                                    .wallet(individual)
+                                    .storeId(storeId)
+                                    .storeNameSnapshot(store.getStoreName())
+                                    .balance(0L)
+                                    .build()
                     ));
 
             long movedSum = 0L;
@@ -639,13 +654,18 @@ public class WalletService {
 
         Page<WalletStoreBalance> page = balanceRepository.findPersonalWalletBalancesByCustomerId(customerId, pageable);
 
-        // storeId로만 저장하므로 Store 정보는 별도 조회 필요
+        // Pattern 3: storeNameSnapshot 사용, 없으면 StoreRepository 폴백 (기존 데이터 호환)
         List<WalletStoreBalanceDetailDto> storeBalances = page.getContent().stream()
                 .map(b -> {
-                    Store store = storeRepository.findById(b.getStoreId()).orElse(null);
+                    String storeName = b.getStoreNameSnapshot();
+                    if (storeName == null) {
+                        // 기존 데이터 호환: 스냅샷이 없으면 Store 조회
+                        Store store = storeRepository.findById(b.getStoreId()).orElse(null);
+                        storeName = store != null ? store.getStoreName() : "Unknown";
+                    }
                     return new WalletStoreBalanceDetailDto(
                             b.getStoreId(),
-                            store != null ? store.getStoreName() : "Unknown",
+                            storeName,
                             b.getBalance(),
                             b.getUpdatedAt());
                 })
@@ -669,13 +689,18 @@ public class WalletService {
 
         Page<WalletStoreBalance> page = balanceRepository.findGroupWalletBalancesByGroupId(groupId, pageable);
 
-        // storeId로만 저장하므로 Store 정보는 별도 조회 필요
+        // Pattern 3: storeNameSnapshot 사용, 없으면 StoreRepository 폴백 (기존 데이터 호환)
         List<WalletStoreBalanceDetailDto> storeBalances = page.getContent().stream()
                 .map(b -> {
-                    Store store = storeRepository.findById(b.getStoreId()).orElse(null);
+                    String storeName = b.getStoreNameSnapshot();
+                    if (storeName == null) {
+                        // 기존 데이터 호환: 스냅샷이 없으면 Store 조회
+                        Store store = storeRepository.findById(b.getStoreId()).orElse(null);
+                        storeName = store != null ? store.getStoreName() : "Unknown";
+                    }
                     return new WalletStoreBalanceDetailDto(
                             b.getStoreId(),
-                            store != null ? store.getStoreName() : "Unknown",
+                            storeName,
                             b.getBalance(),
                             b.getUpdatedAt());
                 })

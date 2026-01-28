@@ -31,9 +31,13 @@ public interface GroupMemberRepository extends JpaRepository<GroupMember, Long> 
     """)
     boolean existsLeader(@Param("groupId") Long groupId, @Param("userId") Long userId);
 
+    /**
+     * Pattern 3: customerNameSnapshot 사용
+     * MSA 전환 시 Customer 도메인 조회 없이 멤버 목록 반환
+     */
     @Query("""
         select new com.ssafy.keeping.domain.group.dto.GroupMemberResponseDto(
-            :groupId, gm.customerId, cast(null as string), gm.leader, gm.groupMemberId
+            :groupId, gm.customerId, gm.customerNameSnapshot, gm.leader, gm.groupMemberId
         )
         from GroupMember gm
         where gm.group.groupId = :groupId

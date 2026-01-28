@@ -35,6 +35,14 @@ public class GroupMember {
     @Column(name = "customer_id", nullable = false)
     private Long customerId;
 
+    /**
+     * 고객 이름 스냅샷 (Pattern 3: 데이터 복제)
+     * MSA 전환 시 CustomerRepository 의존성 제거를 위해 가입 시점에 저장
+     * 고객 이름 변경 시 CustomerNameChangedEvent로 동기화
+     */
+    @Column(name = "customer_name_snapshot", length = 50)
+    private String customerNameSnapshot;
+
     @Column(name = "leader", nullable = false)
     private boolean leader;
 

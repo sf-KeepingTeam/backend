@@ -78,6 +78,7 @@ public class GroupService {
                 GroupMember.builder()
                         .group(saved)
                         .customerId(customer.getCustomerId())
+                        .customerNameSnapshot(customer.getName())
                         .leader(true)
                         .build()
         );
@@ -227,6 +228,8 @@ public class GroupService {
 
 
         Long requesterId = groupAddRequest.getCustomerId();
+        Customer requester = customerRepository.findById(requesterId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
         if (changeStatus == RequestStatus.ACCEPT) {
             if (!groupMemberRepository.existsMember(groupId, requesterId)) {
@@ -234,6 +237,7 @@ public class GroupService {
                         .group(group)
                         .leader(false)
                         .customerId(requesterId)
+                        .customerNameSnapshot(requester.getName())
                         .build());
             }
         }
@@ -244,9 +248,6 @@ public class GroupService {
                 requesterId,
                 accepted ? NotificationType.GROUP_JOIN_ACCEPTED : NotificationType.GROUP_JOIN_REJECTED,
                 accepted ? "가입이 승인되었습니다." : "가입이 거절되었습니다."));
-
-        Customer requester = customerRepository.findById(requesterId)
-                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
         return new AddRequestResponseDto(
             groupAddRequest.getGroupAddRequestId(), requester.getName(),
@@ -277,7 +278,7 @@ public class GroupService {
         if (!Objects.equals(groupCode, requestDto.getInviteCode()))
             throw new CustomException(ErrorCode.CODE_NOT_MATCH);
 
-        validCustomer(userId);
+        Customer customer = validCustomer(userId);
 
         List<Long> memberIdsToNotify = groupMemberRepository.findMemberIdsByGroupId(groupId);
 
@@ -286,6 +287,7 @@ public class GroupService {
                         .group(group)
                         .leader(false)
                         .customerId(userId)
+                        .customerNameSnapshot(customer.getName())
                         .build()
         );
 

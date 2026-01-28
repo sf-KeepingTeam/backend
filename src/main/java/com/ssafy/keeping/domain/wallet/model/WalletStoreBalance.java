@@ -32,6 +32,14 @@ public class WalletStoreBalance {
     @Column(name = "store_id", nullable = false)
     private Long storeId;
 
+    /**
+     * 가게 이름 스냅샷 (Pattern 3: 데이터 복제)
+     * MSA 전환 시 StoreRepository 의존성 제거를 위해 생성 시점에 저장
+     * 가게 이름 변경 시 StoreNameChangedEvent로 동기화
+     */
+    @Column(name = "store_name_snapshot", length = 100)
+    private String storeNameSnapshot;
+
     @Column(name = "balance", nullable = false)
     private Long balance;
 
