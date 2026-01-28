@@ -138,14 +138,17 @@ public class GroupController {
 
     /**
      * 모임 해체: 리더만
-     * 정책: 자동 환급 → 멤버 정리 → 지갑/그룹 삭제
+     * 정책: Saga 패턴으로 비동기 처리
+     * - 즉시 응답 후 백그라운드에서 환급 처리
+     * - 완료 시 각 멤버에게 알림 전송
      */
     @DeleteMapping("/{groupId}")
     public ResponseEntity<ApiResponse<GroupDisbandResponseDto>> disbandGroup(
             @PathVariable Long groupId,
             @AuthenticationPrincipal Long leaderId
     ) {
-        GroupDisbandResponseDto dto = groupService.disbandGroup(groupId, leaderId);
-        return ResponseEntity.ok(ApiResponse.success("모임을 해체했습니다.", 200, dto));
+        GroupDisbandResponseDto dto = groupService.initiateDisbandGroupAsync(groupId, leaderId);
+        return ResponseEntity.accepted()
+                .body(ApiResponse.success("모임 해체가 시작되었습니다. 환급은 잠시 후 완료됩니다.", 202, dto));
     }
 }

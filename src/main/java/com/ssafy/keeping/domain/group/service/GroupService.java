@@ -1,29 +1,27 @@
 package com.ssafy.keeping.domain.group.service;
 
-import com.ssafy.keeping.domain.notification.entity.NotificationType;
-import com.ssafy.keeping.domain.notification.service.NotificationService;
-import com.ssafy.keeping.domain.user.customer.model.Customer;
-import com.ssafy.keeping.domain.user.customer.repository.CustomerRepository;
-import com.ssafy.keeping.domain.wallet.dto.WalletResponseDto;
-import com.ssafy.keeping.domain.wallet.model.Wallet;
-import com.ssafy.keeping.domain.wallet.repository.WalletRepository;
-import com.ssafy.keeping.domain.wallet.repository.WalletStoreBalanceRepository;
-import com.ssafy.keeping.domain.wallet.repository.WalletStoreLotRepository;
-import com.ssafy.keeping.domain.wallet.service.WalletService;
+import com.ssafy.keeping.domain.group.constant.GroupStatus;
 import com.ssafy.keeping.domain.group.constant.RequestStatus;
 import com.ssafy.keeping.domain.group.dto.*;
+import com.ssafy.keeping.domain.group.event.GroupDisbandPayload;
 import com.ssafy.keeping.domain.group.model.Group;
 import com.ssafy.keeping.domain.group.model.GroupAddRequest;
 import com.ssafy.keeping.domain.group.model.GroupMember;
 import com.ssafy.keeping.domain.group.repository.GroupAddRequestRepository;
 import com.ssafy.keeping.domain.group.repository.GroupMemberRepository;
 import com.ssafy.keeping.domain.group.repository.GroupRepository;
+import com.ssafy.keeping.domain.notification.entity.NotificationType;
+import com.ssafy.keeping.domain.notification.service.NotificationService;
+import com.ssafy.keeping.domain.user.customer.model.Customer;
+import com.ssafy.keeping.domain.user.customer.repository.CustomerRepository;
+import com.ssafy.keeping.domain.wallet.dto.WalletResponseDto;
+import com.ssafy.keeping.domain.wallet.service.WalletService;
 import com.ssafy.keeping.global.exception.CustomException;
 import com.ssafy.keeping.global.exception.constants.ErrorCode;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
+import com.ssafy.keeping.global.outbox.service.OutboxPublisher;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,21 +33,20 @@ import static com.ssafy.keeping.global.util.TxUtils.afterCommit;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class GroupService {
     private static final int MAX_RETRY = 5;
-    @PersistenceContext
-    private EntityManager entityManager;
 
     private final WalletService walletService;
-    private final CustomerRepository customerRepository;
     private final GroupRepository groupRepository;
     private final GroupMemberRepository groupMemberRepository;
     private final GroupAddRequestRepository groupAddRequestRepository;
     private final NotificationService notificationService;
+    private final OutboxPublisher outboxPublisher;
 
-    private final WalletRepository walletRepository;
-    private final WalletStoreBalanceRepository balanceRepository;
-    private final WalletStoreLotRepository lotRepository;
+    // User 도메인 - 이름 조회용 (향후 Pattern 3 데이터 복제로 전환 예정)
+    // MSA 전환 시: GroupMember에 customerName 스냅샷 필드 추가하여 CustomerRepository 의존성 제거
+    private final CustomerRepository customerRepository;
 
     @Transactional
     public GroupResponseDto createGroup(Long groupLeaderId, GroupRequestDto requestDto) {
@@ -414,48 +411,60 @@ public class GroupService {
         return new GroupLeaveResponseDto(groupId, customerId, refunded, indivBalance, LocalDateTime.now());
     }
 
+    /**
+     * 그룹 해산 시작 (Saga 패턴 - 비동기)
+     * Phase 1: 상태를 DISBANDING으로 변경하고 Outbox 이벤트 발행
+     * 실제 해산 작업은 GroupDisbandEventHandler에서 수행
+     *
+     * 장점:
+     * - 긴 트랜잭션 분리로 DB 락 시간 감소
+     * - 실패 시 재시도 가능
+     * - DB 분리 시에도 동작
+     */
     @Transactional
-    public GroupDisbandResponseDto disbandGroup(Long groupId, Long leaderId) {
-        validGroup(groupId);
+    public GroupDisbandResponseDto initiateDisbandGroupAsync(Long groupId, Long leaderId) {
+        Group group = validGroup(groupId);
         GroupMember me = validGroupMember(groupId, leaderId);
         if (!me.isLeader()) throw new CustomException(ErrorCode.ONLY_GROUP_LEADER);
 
-        Wallet gw = validGroupWallet(groupId);
-        Long walletId = gw.getWalletId();
+        // 이미 해산 중이거나 해산된 그룹인지 확인
+        if (!group.isActive()) {
+            log.warn("[그룹해산] 이미 해산 중인 그룹 - groupId: {}, status: {}", groupId, group.getStatus());
+            throw new CustomException(ErrorCode.BAD_REQUEST);
+        }
+
+        // WalletService를 통해 지갑 ID 조회 (MSA 대비 - WalletRepository 직접 접근 제거)
+        Long walletId = walletService.getGroupWalletId(groupId);
         List<Long> memberIds = groupMemberRepository.findMemberIdsByGroupId(groupId);
 
-        Map<Long, Long> refundedByMember = walletService.settleAllMembersShare(groupId, memberIds); // 변경
-        long totalRefunded = refundedByMember.values().stream().mapToLong(Long::longValue).sum();
+        // 상태를 DISBANDING으로 변경
+        group.startDisband();
 
-        long remain = balanceRepository.sumByWalletIdForUpdate(gw.getWalletId()).orElse(0L);
-        if (remain != 0L) throw new CustomException(ErrorCode.INCONSISTENT_STATE);
-        if (lotRepository.existsActiveLotByWalletId(gw.getWalletId()))
-            throw new CustomException(ErrorCode.INCONSISTENT_STATE);
+        log.info("[그룹해산] Saga 시작 - groupId: {}, memberCount: {}", groupId, memberIds.size());
 
-        lotRepository.deleteByWalletId(gw.getWalletId());
-        balanceRepository.deleteByWalletId(gw.getWalletId());
-        groupMemberRepository.deleteByGroupId(groupId);
-        walletRepository.deleteById(walletId);
+        // Outbox 이벤트 발행
+        outboxPublisher.publish(
+                "Group",
+                groupId.toString(),
+                "GroupDisbandInitiated",
+                GroupDisbandPayload.builder()
+                        .groupId(groupId)
+                        .walletId(walletId)
+                        .memberIds(memberIds)
+                        .leaderId(leaderId)
+                        .build()
+        );
 
-        entityManager.flush();
-        entityManager.clear(); // 1차 캐시 비우기
-
-        Group group = groupRepository.getReferenceById(groupId);
-        groupRepository.delete(group);
-
-        afterCommit(() -> refundedByMember.forEach((cid, amt) ->
-                notificationService.sendToCustomer(
-                        cid, NotificationType.GROUP_DISBANDED,
-                        "모임 해체. 환급 " + amt + "P 완료.")));
-
+        // 비동기 처리이므로 환급 정보는 아직 없음
         return new GroupDisbandResponseDto(
-                groupId, memberIds.size(), totalRefunded, refundedByMember, LocalDateTime.now());
+                groupId, memberIds.size(), 0L, Map.of(), LocalDateTime.now());
     }
 
 
     /**
      * ===============validate method=============
-     *  Group, GroupMember, Customer, GroupWallet 검증
+     *  Group, GroupMember, Customer 검증
+     *  GroupWallet 검증은 WalletService.getGroupWalletId() 사용
      */
 
     public Group validGroup(Long groupId) {
@@ -469,13 +478,13 @@ public class GroupService {
         );
     }
 
+    /**
+     * 고객 존재 확인 (이름 조회용)
+     * 향후 Pattern 3 (데이터 복제)로 전환하여 CustomerRepository 의존성 제거 예정
+     * MSA 전환 시: GroupMember/GroupAddRequest에 customerName 스냅샷 필드 추가
+     */
     public Customer validCustomer(Long customerId) {
         return customerRepository.findById(customerId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
-    }
-
-    public Wallet validGroupWallet(Long groupId) {
-        return walletRepository.findByGroupId(groupId)
-                .orElseThrow(() -> new CustomException(ErrorCode.WALLET_NOT_FOUND));
     }
 }
