@@ -186,6 +186,7 @@ public enum ErrorCode {
     CHARGE_BONUS_NOT_FOUND(HttpStatus.NOT_FOUND, "충전 보너스 설정을 찾을 수 없습니다."),
     CHARGE_BONUS_ALREADY_EXISTS(HttpStatus.CONFLICT, "해당 충전 금액에 대한 보너스 설정이 이미 존재합니다."),
     STORE_ACCESS_DENIED(HttpStatus.FORBIDDEN, "해당 가게에 대한 접근 권한이 없습니다."),
+    INVALID_CHARGE_AMOUNT(HttpStatus.BAD_REQUEST, "점주가 설정한 충전 금액만 선택할 수 있습니다."),
 
     // 통계 관련
     INVALID_DATE_RANGE(HttpStatus.BAD_REQUEST, "유효하지 않은 날짜 범위입니다."),

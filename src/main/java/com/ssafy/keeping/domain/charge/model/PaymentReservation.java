@@ -56,6 +56,27 @@ public class PaymentReservation {
     private Long amount;
 
     /**
+     * 보너스 퍼센트 (예약 시점 확정)
+     */
+    @Column(nullable = false)
+    @Builder.Default
+    private Integer bonusPercentage = 0;
+
+    /**
+     * 보너스 금액 (예약 시점 확정)
+     */
+    @Column(nullable = false)
+    @Builder.Default
+    private Long bonusAmount = 0L;
+
+    /**
+     * 예상 총 포인트 (amount + bonusAmount)
+     */
+    @Column(nullable = false)
+    @Builder.Default
+    private Long expectedTotalPoints = 0L;
+
+    /**
      * 주문명
      */
     @Column(nullable = false, length = 200)
@@ -103,10 +124,12 @@ public class PaymentReservation {
      * 예약 상태 Enum
      */
     public enum ReservationStatus {
-        PENDING,    // 대기 중 (토스 결제 진행 중)
-        COMPLETED,  // 완료 (결제 승인 완료)
-        EXPIRED,    // 만료 (10분 초과)
-        FAILED      // 실패 (토스 결제 실패)
+        PENDING,         // 대기 중 (토스 결제 진행 중)
+        COMPLETED,       // 완료 (결제 승인 완료)
+        EXPIRED,         // 만료 (10분 초과)
+        FAILED,          // 실패 (토스 결제 실패)
+        CANCEL_PENDING,  // 취소 진행 중 (토스 취소 API 호출 전)
+        CANCEL_FAILED    // 취소 실패 (토스 취소 성공했으나 DB 롤백 필요)
     }
 
     /**
@@ -137,5 +160,19 @@ public class PaymentReservation {
      */
     public void markAsFailed() {
         this.status = ReservationStatus.FAILED;
+    }
+
+    /**
+     * 취소 대기 상태로 변경
+     */
+    public void markAsCancelPending() {
+        this.status = ReservationStatus.CANCEL_PENDING;
+    }
+
+    /**
+     * 취소 실패 상태로 변경 (롤백 필요)
+     */
+    public void markAsCancelFailed() {
+        this.status = ReservationStatus.CANCEL_FAILED;
     }
 }

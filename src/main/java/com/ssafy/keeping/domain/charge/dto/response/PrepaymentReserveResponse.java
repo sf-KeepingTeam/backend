@@ -33,6 +33,21 @@ public class PrepaymentReserveResponse {
     private Long amount;
 
     /**
+     * 보너스 퍼센트
+     */
+    private Integer bonusPercentage;
+
+    /**
+     * 보너스 금액
+     */
+    private Long bonusAmount;
+
+    /**
+     * 예상 총 포인트 (amount + bonusAmount)
+     */
+    private Long expectedTotalPoints;
+
+    /**
      * 주문명
      */
     private String orderName;
