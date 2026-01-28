@@ -141,4 +141,16 @@ public interface WalletStoreBalanceRepository extends JpaRepository<WalletStoreB
         where b.wallet.walletId = :walletId
     """)
     void deleteByWalletId(@Param("walletId") Long walletId);
+
+    /**
+     * 가게 이름 스냅샷 일괄 업데이트 (Pattern 3: 이벤트 기반 동기화)
+     * StoreNameChangedEvent 처리 시 호출
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("""
+        update WalletStoreBalance b
+        set b.storeNameSnapshot = :newStoreName
+        where b.storeId = :storeId
+    """)
+    int updateStoreNameSnapshot(@Param("storeId") Long storeId, @Param("newStoreName") String newStoreName);
 }

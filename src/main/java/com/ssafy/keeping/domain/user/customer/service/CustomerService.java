@@ -3,21 +3,23 @@ package com.ssafy.keeping.domain.user.customer.service;
 import com.ssafy.keeping.domain.auth.enums.AuthProvider;
 import com.ssafy.keeping.domain.auth.signup.dto.CustomerSignupRequest;
 import com.ssafy.keeping.domain.auth.signup.ticket.SignupTicketPayload;
-import com.ssafy.keeping.domain.user.customer.model.Customer;
-import com.ssafy.keeping.domain.user.customer.repository.CustomerRepository;
 import com.ssafy.keeping.domain.user.customer.dto.CustomerProfileResponse;
 import com.ssafy.keeping.domain.user.customer.dto.CustomerProfileUpdateRequest;
+import com.ssafy.keeping.domain.user.customer.event.CustomerNameChangedPayload;
+import com.ssafy.keeping.domain.user.customer.model.Customer;
+import com.ssafy.keeping.domain.user.customer.repository.CustomerRepository;
 import com.ssafy.keeping.domain.user.dto.ProfileUploadResponse;
-import com.ssafy.keeping.global.s3.service.ImageService;
-import com.ssafy.keeping.domain.wallet.repository.WalletRepository;
 import com.ssafy.keeping.global.exception.CustomException;
 import com.ssafy.keeping.global.exception.constants.ErrorCode;
+import com.ssafy.keeping.global.outbox.service.OutboxPublisher;
+import com.ssafy.keeping.global.s3.service.ImageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Objects;
 import java.util.Optional;
 
 
@@ -28,6 +30,7 @@ public class CustomerService {
 
     private final CustomerRepository customerRepository;
     private final ImageService imageService;
+    private final OutboxPublisher outboxPublisher;
 
     /**
      * 고객 생성
@@ -98,13 +101,33 @@ public class CustomerService {
     public CustomerProfileResponse updateMyProfile(Long customerId, CustomerProfileUpdateRequest request) {
         Customer customer = validCustomer(customerId);
 
+        // Pattern 3: 이름 변경 감지를 위해 변경 전 이름 저장
+        String oldName = customer.getName();
+        String newName = request.getName();
+
         try {
-            customerRepository.updateCustomerProfile(customerId, request.getName(), request.getPhoneNumber());
+            customerRepository.updateCustomerProfile(customerId, newName, request.getPhoneNumber());
 
             Customer updatedCustomer = validCustomer(customerId);
 
+            // 이름이 변경된 경우 CustomerNameChanged 이벤트 발행
+            if (!Objects.equals(oldName, newName) && newName != null) {
+                outboxPublisher.publish(
+                        "Customer",
+                        customerId.toString(),
+                        "CustomerNameChanged",
+                        CustomerNameChangedPayload.builder()
+                                .customerId(customerId)
+                                .oldName(oldName)
+                                .newName(newName)
+                                .build()
+                );
+                log.info("고객 이름 변경 이벤트 발행 - customerId: {}, {} -> {}",
+                        customerId, oldName, newName);
+            }
+
             log.info("고객 프로필 수정 완료 - 고객ID: {}, 이름: {}, 전화번호: {}",
-                     customerId, request.getName(), request.getPhoneNumber());
+                     customerId, newName, request.getPhoneNumber());
 
             return CustomerProfileResponse.from(updatedCustomer);
 

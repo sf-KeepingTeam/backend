@@ -5,6 +5,7 @@ import com.ssafy.keeping.domain.store.dto.StoreEditRequestDto;
 import com.ssafy.keeping.domain.store.dto.StorePublicDto;
 import com.ssafy.keeping.domain.store.dto.StoreRequestDto;
 import com.ssafy.keeping.domain.store.dto.StoreResponseDto;
+import com.ssafy.keeping.domain.store.event.StoreNameChangedPayload;
 import com.ssafy.keeping.domain.store.model.Store;
 import com.ssafy.keeping.domain.store.repository.StoreRepository;
 import com.ssafy.keeping.domain.user.owner.model.Owner;
@@ -12,6 +13,7 @@ import com.ssafy.keeping.domain.user.owner.repository.OwnerRepository;
 import com.ssafy.keeping.domain.wallet.repository.WalletStoreBalanceRepository;
 import com.ssafy.keeping.global.exception.CustomException;
 import com.ssafy.keeping.global.exception.constants.ErrorCode;
+import com.ssafy.keeping.global.outbox.service.OutboxPublisher;
 import com.ssafy.keeping.global.s3.service.ImageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +32,7 @@ public class StoreService {
     private final OwnerRepository ownerRepository;
     private final WalletStoreBalanceRepository balanceRepository;
     private final ImageService imageService;
+    private final OutboxPublisher outboxPublisher;
 
     /**
      * 가게 생성 (간소화 버전 - 외부 API merchantId 생성 제거)
@@ -95,11 +98,31 @@ public class StoreService {
             throw new CustomException(ErrorCode.STORE_ALREADY_EXISTS);
         }
 
-        store.patchStore(requestDto, editImgUrl);
+        // Pattern 3: 이름 변경 감지 및 이벤트 발행
+        String oldStoreName = store.getStoreName();
+        String newStoreName = requestDto.getStoreName();
+        boolean nameChanged = !Objects.equals(oldStoreName, newStoreName);
 
-        return StoreResponseDto.fromEntity(
-                storeRepository.save(store)
-        );
+        store.patchStore(requestDto, editImgUrl);
+        Store saved = storeRepository.save(store);
+
+        // 이름이 변경된 경우 StoreNameChanged 이벤트 발행
+        if (nameChanged && newStoreName != null) {
+            outboxPublisher.publish(
+                    "Store",
+                    saved.getStoreId().toString(),
+                    "StoreNameChanged",
+                    StoreNameChangedPayload.builder()
+                            .storeId(saved.getStoreId())
+                            .oldStoreName(oldStoreName)
+                            .newStoreName(newStoreName)
+                            .build()
+            );
+            log.info("가게 이름 변경 이벤트 발행 - storeId: {}, {} -> {}",
+                    saved.getStoreId(), oldStoreName, newStoreName);
+        }
+
+        return StoreResponseDto.fromEntity(saved);
     }
 
     @Transactional

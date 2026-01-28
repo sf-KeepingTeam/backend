@@ -89,4 +89,16 @@ public interface GroupMemberRepository extends JpaRepository<GroupMember, Long> 
     List<Long> findMemberGroupsByCustomerId(@Param("customerId") Long customerId);
 
     List<GroupMember> findAllByGroup_GroupId(Long groupId);
+
+    /**
+     * 고객 이름 스냅샷 일괄 업데이트 (Pattern 3: 이벤트 기반 동기화)
+     * CustomerNameChangedEvent 처리 시 호출
+     */
+    @Modifying
+    @Query("""
+        update GroupMember gm
+        set gm.customerNameSnapshot = :newCustomerName
+        where gm.customerId = :customerId
+    """)
+    int updateCustomerNameSnapshot(@Param("customerId") Long customerId, @Param("newCustomerName") String newCustomerName);
 }
