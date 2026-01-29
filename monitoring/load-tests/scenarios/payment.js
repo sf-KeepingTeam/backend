@@ -24,6 +24,7 @@ import {
   logSetupComplete,
   getRandomCustomerId,
   getRandomStoreId,
+  getRandomWalletId,
   VU_CONFIG,
   ENABLE_CREATE_UPDATE_TESTS,
 } from '../config/common.js';
@@ -70,10 +71,12 @@ export function paymentScenario() {
 
   group('Payment API - QR Create', () => {
     // QR 토큰 생성
+    const walletId = getRandomWalletId();
     const qrPayload = JSON.stringify({
-      storeId: storeId,
-      amount: randomInt(5000, 50000),
-      walletType: 'INDIVIDUAL',  // 또는 'GROUP'
+      walletId: walletId,
+      mode: 'CPQR',
+      bindStoreId: storeId,
+      ttlSeconds: 60,
     });
 
     const qrRes = http.post(`${BASE_URL}/cpqr/new`, qrPayload, { headers });
@@ -136,11 +139,13 @@ export function qrCreateOnlyScenario() {
   const customerId = getRandomCustomerId();
   const headers = customerHeaders(customerId);
   const storeId = getRandomStoreId();
+  const walletId = getRandomWalletId();
 
   const qrPayload = JSON.stringify({
-    storeId: storeId,
-    amount: randomInt(5000, 50000),
-    walletType: 'INDIVIDUAL',
+    walletId: walletId,
+    mode: 'CPQR',
+    bindStoreId: storeId,
+    ttlSeconds: 60,
   });
 
   const res = http.post(`${BASE_URL}/cpqr/new`, qrPayload, { headers });

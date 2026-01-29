@@ -5,11 +5,11 @@
 -- =============================================
 -- 데이터베이스 생성 및 선택
 -- =============================================
-CREATE DATABASE IF NOT EXISTS ssafy_fintech_db
+CREATE DATABASE IF NOT EXISTS keeping
 CHARACTER SET utf8mb4
 COLLATE utf8mb4_unicode_ci;
 
-USE ssafy_fintech_db;
+USE keeping;
 
 -- =============================================
 -- 1. CUSTOMERS 테이블 생성
