@@ -71,3 +71,20 @@ src/resources/application.yml
 .claude/
 CLAUDE.md
 CLAUDE.local.md
+
+### Environment Variables ###
+.env
+.env.local
+.env.production
+.env.*.local
+!.env.example
+
+### Docker volumes ###
+mysql_data/
+redis_data/
+
+### Load test results ###
+monitoring/load-tests/results/*.json
+
+### Error logs ###
+hs_err_pid*.log
