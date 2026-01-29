@@ -21,22 +21,28 @@ public interface GroupRepository extends JpaRepository<Group, Long> {
     )
     String findGroupCodeById(@Param("groupId") Long groupId);
 
+    /**
+     * Step 6: 크로스-도메인 JOIN 제거
+     * 변경 전: join Customer c on gm.user = c → c.name 사용
+     * 변경 후: gm.customerNameSnapshot 사용 (Pattern 3)
+     */
     @Query("""
     select new com.ssafy.keeping.domain.group.dto.GroupMaskingResponseDto(
         g.groupId,
         g.groupName,
         g.groupDescription,
         case
-        when length(c.name) = 1
+        when length(gm.customerNameSnapshot) = 1
             then '*'
-        when length(c.name) = 2
-            then concat(substring(c.name, 1, 1), '*')
-        else concat(substring(c.name, 1, 1), repeat('*', length(c.name) - 2), substring(c.name, length(c.name), 1))
+        when length(gm.customerNameSnapshot) = 2
+            then concat(substring(gm.customerNameSnapshot, 1, 1), '*')
+        when gm.customerNameSnapshot is null
+            then '***'
+        else concat(substring(gm.customerNameSnapshot, 1, 1), repeat('*', length(gm.customerNameSnapshot) - 2), substring(gm.customerNameSnapshot, length(gm.customerNameSnapshot), 1))
         end
     )
     from Group g
     join GroupMember gm on gm.group = g
-    join Customer c on gm.user = c
     where g.groupName = :name
     and gm.leader = true
     """)
