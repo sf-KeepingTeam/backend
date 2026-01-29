@@ -88,9 +88,6 @@ public class PrepaymentService {
         log.info("[예약] 시작 - 가게ID: {}, 고객ID: {}, 금액: {}원",
                 storeId, customerId, request.getAmount());
 
-        Customer customer = customerRepository.findById(customerId)
-                .orElseThrow(() -> new CustomException(ErrorCode.CUSTOMER_NOT_FOUND));
-
         Store store = storeRepository.findById(storeId)
                 .orElseThrow(() -> new CustomException(ErrorCode.STORE_NOT_FOUND));
 
