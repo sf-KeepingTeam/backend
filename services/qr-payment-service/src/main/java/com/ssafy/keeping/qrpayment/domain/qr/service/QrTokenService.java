@@ -1,0 +1,80 @@
+package com.ssafy.keeping.qrpayment.domain.qr.service;
+
+import com.ssafy.keeping.qrpayment.domain.qr.dto.QrCreateRequest;
+import com.ssafy.keeping.qrpayment.domain.qr.dto.QrCreateResponse;
+import com.ssafy.keeping.qrpayment.domain.qr.model.QrToken;
+import com.ssafy.keeping.qrpayment.domain.qr.repository.QrTokenRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.UUID;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class QrTokenService {
+
+    private final QrTokenRepository qrTokenRepository;
+
+    private static final int DEFAULT_TTL_SECONDS = 5;
+
+    /**
+     * QR 토큰 생성
+     */
+    public QrCreateResponse createQrToken(QrCreateRequest request, Long customerId) {
+        int ttl = request.getTtlSeconds() != null ? request.getTtlSeconds() : DEFAULT_TTL_SECONDS;
+
+        // 기존 QR이 있으면 삭제 (중복 방지)
+        qrTokenRepository.findByWalletId(request.getWalletId())
+                .ifPresent(existing -> {
+                    log.info("기존 QR 토큰 삭제: {}", existing.getTokenId());
+                    qrTokenRepository.delete(existing);
+                });
+
+        // 새 QR 토큰 생성
+        String tokenId = UUID.randomUUID().toString();
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime expiresAt = now.plusSeconds(ttl);
+
+        QrToken qrToken = QrToken.builder()
+                .tokenId(tokenId)
+                .walletId(request.getWalletId())
+                .customerId(customerId)
+                .mode(request.getMode())
+                .bindStoreId(request.getBindStoreId())
+                .createdAt(now)
+                .expiresAt(expiresAt)
+                .ttl((long) ttl)
+                .build();
+
+        qrTokenRepository.save(qrToken);
+        log.info("QR 토큰 생성: tokenId={}, walletId={}, ttl={}초", tokenId, request.getWalletId(), ttl);
+
+        return QrCreateResponse.from(tokenId, expiresAt, ttl);
+    }
+
+    /**
+     * QR 토큰 조회 및 검증
+     */
+    public QrToken getValidToken(String tokenId) {
+        QrToken token = qrTokenRepository.findByTokenId(tokenId)
+                .orElseThrow(() -> new IllegalArgumentException("유효하지 않은 QR 토큰입니다"));
+
+        if (token.isExpired()) {
+            throw new IllegalStateException("만료된 QR 토큰입니다");
+        }
+
+        return token;
+    }
+
+    /**
+     * QR 토큰 삭제 (결제 완료 후)
+     */
+    public void deleteToken(String tokenId) {
+        qrTokenRepository.findByTokenId(tokenId)
+                .ifPresent(qrTokenRepository::delete);
+        log.info("QR 토큰 삭제: {}", tokenId);
+    }
+}

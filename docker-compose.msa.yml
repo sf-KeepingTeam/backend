@@ -1,0 +1,165 @@
+# docker-compose.msa.yml
+# MSA 버전 - Nginx Gateway + QR-Payment 서비스 포함
+#
+# 사용법:
+#   docker compose -f docker-compose.msa.yml up -d
+#
+# 구성:
+#   - nginx: API Gateway (포트 80)
+#   - monolith: 기존 Spring Boot 앱 (내부 8080)
+#   - qr-payment: QR/Payment 서비스 (내부 8081)
+#   - mysql: 데이터베이스
+#   - redis: 캐시
+
+version: '3.8'
+
+services:
+  # ==========================================
+  # API Gateway (Nginx)
+  # ==========================================
+  nginx:
+    image: nginx:alpine
+    container_name: keeping-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - monolith
+      - qr-payment
+    networks:
+      - keeping-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ==========================================
+  # 기존 모놀리스 (내부 전용)
+  # ==========================================
+  monolith:
+    image: ${DOCKER_USERNAME}/keeping-backend:latest
+    container_name: keeping-monolith
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # 테스트용 포트 노출
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod,loadtest
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/keeping?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-1234}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      APP_AUTH_JWT_SECRET: ${JWT_SECRET}
+      PAYMENT_TOSS_SECRET_KEY: ${TOSS_SECRET_KEY:-test_sk_Gv6LjeKD8aBnMEWAZA0Y3wYxAdXy}
+      CLOUD_AWS_CREDENTIALS_ACCESS_KEY: ${AWS_ACCESS_KEY:-}
+      CLOUD_AWS_CREDENTIALS_SECRET_KEY: ${AWS_SECRET_KEY:-}
+      CLOUD_AWS_REGION_STATIC: ${AWS_REGION:-ap-northeast-2}
+      CLOUD_AWS_S3_BUCKET: ${AWS_S3_BUCKET:-}
+      LOADTEST_BACKDOOR_ENABLED: "true"
+      JAVA_OPTS: "-Xms512m -Xmx1536m"
+      FE_BASE_URL: ${FE_BASE_URL:-http://localhost:3030}
+    networks:
+      - keeping-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ==========================================
+  # QR-Payment 서비스 (새로 분리)
+  # ==========================================
+  qr-payment:
+    build:
+      context: ./services/qr-payment-service
+      dockerfile: Dockerfile
+    # 또는 이미지 사용:
+    # image: ${DOCKER_USERNAME}/qr-payment-service:latest
+    container_name: keeping-qr-payment
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    expose:
+      - "8081"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET}
+      MONOLITH_URL: http://monolith:8080
+    networks:
+      - keeping-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ==========================================
+  # MySQL 데이터베이스
+  # ==========================================
+  mysql:
+    image: mysql:8.0
+    container_name: keeping-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-1234}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-keeping}
+      MYSQL_CHARACTER_SET_SERVER: utf8mb4
+      MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
+    ports:
+      - "3307:3306"  # 로컬 MySQL과 충돌 방지
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --max_connections=200
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - keeping-network
+
+  # ==========================================
+  # Redis 캐시
+  # ==========================================
+  redis:
+    image: redis:7-alpine
+    container_name: keeping-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - keeping-network
+
+volumes:
+  mysql_data:
+  redis_data:
+
+networks:
+  keeping-network:
+    driver: bridge
