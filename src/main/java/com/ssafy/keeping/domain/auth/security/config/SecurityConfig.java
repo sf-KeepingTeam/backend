@@ -65,7 +65,10 @@ public class SecurityConfig {
             "/debug/redis",
             "/swagger-ui.html",
             "/actuator/**",
-            "/loadtest/health"
+            "/loadtest/health",
+
+            // Internal API - 마이크로서비스 간 통신용 (X-Internal-Auth 헤더로 보호)
+            "/internal/**"
     };
 
     public static final String[] TEMP_ALLOW_URLS = {

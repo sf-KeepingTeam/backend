@@ -1,5 +1,5 @@
 # docker-compose.msa.yml
-# MSA 버전 - Nginx Gateway + QR-Payment 서비스 포함
+# MSA 버전 - Nginx Gateway + QR Service 포함
 #
 # 사용법:
 #   docker compose -f docker-compose.msa.yml up -d
@@ -7,9 +7,9 @@
 # 구성:
 #   - nginx: API Gateway (포트 80)
 #   - monolith: 기존 Spring Boot 앱 (내부 8080)
-#   - qr-payment: QR/Payment 서비스 (내부 8081)
+#   - qr-service: QR 토큰 생성 + QR 결제 처리 (내부 8082)
 #   - mysql: 데이터베이스
-#   - redis: 캐시
+#   - redis: 캐시 + QR 토큰 저장
 
 version: '3.8'
 
@@ -27,7 +27,7 @@ services:
       - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - monolith
-      - qr-payment
+      - qr-service
     networks:
       - keeping-network
     healthcheck:
@@ -78,31 +78,38 @@ services:
       start_period: 60s
 
   # ==========================================
-  # QR-Payment 서비스 (새로 분리)
+  # QR Service (QR 토큰 생성 + 결제 처리)
   # ==========================================
-  qr-payment:
+  qr-service:
     build:
-      context: ./services/qr-payment-service
+      context: ./services/qr-service
       dockerfile: Dockerfile
     # 또는 이미지 사용:
-    # image: ${DOCKER_USERNAME}/qr-payment-service:latest
-    container_name: keeping-qr-payment
+    # image: ${DOCKER_USERNAME}/qr-service:latest
+    container_name: keeping-qr-service
     restart: unless-stopped
     depends_on:
+      mysql:
+        condition: service_healthy
       redis:
         condition: service_healthy
     expose:
-      - "8081"
+      - "8082"
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      DB_URL: jdbc:mysql://mysql:3306/payment_service?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true
+      DB_USERNAME: root
+      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:-1234}
       REDIS_HOST: redis
       REDIS_PORT: 6379
       JWT_SECRET: ${JWT_SECRET}
       MONOLITH_URL: http://monolith:8080
+      TOSS_SECRET_KEY: ${TOSS_SECRET_KEY:-test_sk_Gv6LjeKD8aBnMEWAZA0Y3wYxAdXy}
+      INTERNAL_AUTH_TOKEN: internal-service-token-12345
     networks:
       - keeping-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -124,6 +131,7 @@ services:
       - "3307:3306"  # 로컬 MySQL과 충돌 방지
     volumes:
       - mysql_data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
@@ -137,7 +145,7 @@ services:
       - keeping-network
 
   # ==========================================
-  # Redis 캐시
+  # Redis 캐시 + QR 토큰 저장
   # ==========================================
   redis:
     image: redis:7-alpine

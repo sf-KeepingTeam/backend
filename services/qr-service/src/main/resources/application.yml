@@ -1,0 +1,61 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: qr-service
+
+  # Redis 설정 (QR 토큰 저장)
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  # JPA/MySQL 설정
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/payment_service?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:1234}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQLDialect
+
+# JWT 설정 (모놀리스와 같은 키 사용!)
+jwt:
+  secret: ${JWT_SECRET:your-secret-key}
+
+# 모놀리스 URL (ACL 호출용)
+monolith:
+  url: ${MONOLITH_URL:http://localhost:8080}
+
+# QR-Payment 서비스 URL (더 이상 사용하지 않음 - 자체 Redis 사용)
+# qr-payment:
+#   url: ${QR_PAYMENT_URL:http://localhost:8081}
+
+# 토스페이먼츠 설정
+payment:
+  toss:
+    secret-key: ${TOSS_SECRET_KEY:test_sk_Gv6LjeKD8aBnMEWAZA0Y3wYxAdXy}
+    base-url: https://api.tosspayments.com
+  provider: toss
+
+# 내부 서비스 통신 토큰
+internal:
+  auth-token: ${INTERNAL_AUTH_TOKEN:internal-service-token-12345}
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
