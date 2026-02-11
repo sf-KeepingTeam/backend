@@ -75,7 +75,7 @@ public class CustomerClient {
                     PinVerifyResponse.class
             );
 
-            return response.getBody() != null && response.getBody().isValid();
+            return response.getBody() != null && response.getBody().isVerified();
 
         } catch (Exception e) {
             log.error("PIN 검증 실패: customerId={}, error={}", customerId, e.getMessage());

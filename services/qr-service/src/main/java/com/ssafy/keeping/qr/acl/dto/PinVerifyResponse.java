@@ -8,5 +8,6 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 public class PinVerifyResponse {
-    private boolean valid;
+    private boolean verified;
+    private Long customerId;
 }
