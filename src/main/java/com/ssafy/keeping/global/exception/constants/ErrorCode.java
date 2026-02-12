@@ -102,7 +102,6 @@ public enum ErrorCode {
     // QR
     QR_NOT_FOUND(HttpStatus.NOT_FOUND, "QR 토큰을 찾을 수 없거나 사용 불가 상태입니다."),
     QR_EXPIRED(HttpStatus.GONE, "QR 토큰이 만료되었습니다."),
-    QR_MODE_UNSUPPORTED(HttpStatus.BAD_REQUEST, "지원하지 않는 QR 모드입니다."),
     QR_STORE_MISMATCH(HttpStatus.FORBIDDEN, "바인딩된 매장과 일치하지 않는 요청입니다."),
 
     // 스냅샷/직렬화
@@ -151,6 +150,8 @@ public enum ErrorCode {
 
     // 자금/한도 관련
     FUNDS_INSUFFICIENT(HttpStatus.PAYMENT_REQUIRED, "잔액이 부족합니다."),
+    FUNDS_CHANGED_BY_OTHER_PAYMENT(HttpStatus.CONFLICT, "다른 결제로 잔액이 변경되었습니다."),
+    PAYMENT_IN_PROGRESS(HttpStatus.CONFLICT, "다른 결제가 진행 중입니다. 잠시 후 다시 시도해주세요."),
     PAYMENT_POLICY_VIOLATION(HttpStatus.UNPROCESSABLE_ENTITY, "결제 정책에 따라 승인할 수 없습니다."),
 
     FUNDS_INVARIANT_VIOLATION(HttpStatus.INTERNAL_SERVER_ERROR, "자금 불변식 위반: 잔액표와 로트 합계가 일치하지 않습니다."),

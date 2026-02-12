@@ -20,12 +20,18 @@ import com.ssafy.keeping.domain.wallet.repository.WalletRepository;
 import com.ssafy.keeping.domain.wallet.repository.WalletStoreBalanceRepository;
 import com.ssafy.keeping.global.exception.CustomException;
 import com.ssafy.keeping.global.exception.constants.ErrorCode;
+import jakarta.persistence.LockTimeoutException;
+import jakarta.persistence.PessimisticLockException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -79,9 +85,15 @@ public class InternalWalletService {
         Customer customer = customerRepository.findByCustomerIdAndDeletedAtIsNull(customerId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
-        // 2. 잔액 조회 (행잠금)
-        WalletStoreBalance balance = balanceRepository.lockByWalletIdAndStoreId(walletId, storeId)
-                .orElse(null);
+        // 2. 잔액 조회 (행잠금 - 3초 타임아웃)
+        WalletStoreBalance balance;
+        try {
+            balance = balanceRepository.lockByWalletIdAndStoreId(walletId, storeId)
+                    .orElse(null);
+        } catch (PessimisticLockException | LockTimeoutException e) {
+            log.warn("락 타임아웃: walletId={}, storeId={}, 다른 결제가 진행 중", walletId, storeId);
+            return FundsResponse.paymentInProgress();
+        }
 
         if (balance == null || balance.getBalance() < amount) {
             log.warn("잔액 부족: walletId={}, storeId={}, required={}, actual={}",
@@ -105,22 +117,28 @@ public class InternalWalletService {
 
         // 5. 거래 항목 생성
         if (request.getItems() != null && !request.getItems().isEmpty()) {
-            for (FundsCaptureRequest.ItemSnapshot item : request.getItems()) {
-                Menu menu = null;
-                if (item.getMenuId() != null) {
-                    menu = menuRepository.findById(item.getMenuId()).orElse(null);
-                }
+            // menuId 모아서 한 번에 조회
+            List<Long> menuIds = request.getItems().stream()
+                    .map(FundsCaptureRequest.ItemSnapshot::getMenuId)
+                    .filter(Objects::nonNull)
+                    .toList();
 
-                TransactionItem txItem = TransactionItem.of(
-                        transaction,
-                        storeId,
-                        menu,
-                        item.getMenuName(),
-                        item.getUnitPrice(),
-                        item.getQuantity()
-                );
-                transactionItemRepository.save(txItem);
-            }
+            Map<Long, Menu> menuMap = menuRepository.findAllById(menuIds).stream()
+                    .collect(Collectors.toMap(Menu::getMenuId, menu -> menu));
+
+            // TransactionItem 리스트 생성 후 한 번에 저장
+            List<TransactionItem> txItems = request.getItems().stream()
+                    .map(item -> TransactionItem.of(
+                            transaction,
+                            storeId,
+                            item.getMenuId() != null ? menuMap.get(item.getMenuId()) : null,
+                            item.getMenuName(),
+                            item.getUnitPrice(),
+                            item.getQuantity()
+                    ))
+                    .toList();
+
+            transactionItemRepository.saveAll(txItems);
         }
 
         log.info("자금 캡처 완료: walletId={}, storeId={}, amount={}, txId={}",
@@ -140,15 +158,21 @@ public class InternalWalletService {
         Store store = storeRepository.findById(storeId)
                 .orElseThrow(() -> new CustomException(ErrorCode.STORE_NOT_FOUND));
 
-        // 잔액 조회 (행잠금)
-        WalletStoreBalance balance = balanceRepository.lockByWalletIdAndStoreId(walletId, storeId)
-                .orElseGet(() -> balanceRepository.save(
-                        WalletStoreBalance.builder()
-                                .wallet(wallet)
-                                .store(store)
-                                .balance(0L)
-                                .build()
-                ));
+        // 잔액 조회 (행잠금 - 3초 타임아웃)
+        WalletStoreBalance balance;
+        try {
+            balance = balanceRepository.lockByWalletIdAndStoreId(walletId, storeId)
+                    .orElseGet(() -> balanceRepository.save(
+                            WalletStoreBalance.builder()
+                                    .wallet(wallet)
+                                    .store(store)
+                                    .balance(0L)
+                                    .build()
+                    ));
+        } catch (PessimisticLockException | LockTimeoutException e) {
+            log.warn("복원 중 락 타임아웃: walletId={}, storeId={}, 다른 결제가 진행 중", walletId, storeId);
+            throw new CustomException(ErrorCode.PAYMENT_IN_PROGRESS);
+        }
 
         // 잔액 복원
         balance.addBalance(amount);

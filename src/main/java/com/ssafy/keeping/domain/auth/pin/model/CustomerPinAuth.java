@@ -19,6 +19,10 @@ public class CustomerPinAuth {
     @Column(name = "customer_id")
     private Long customerId;                    // PK & FK (1:1 고정)
 
+    @Version
+    @Column(name = "version")
+    private Long version;                       // 낙관적 락 (동시 요청 시 fail_count 정확성 보장)
+
     @Column(name = "pin_hash", nullable = false, length = 255)
     private String pinHash;                     // 해시만 저장(평문 금지)
 

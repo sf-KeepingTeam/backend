@@ -28,7 +28,6 @@ import com.ssafy.keeping.domain.payment.intent.model.PaymentIntent;
 import com.ssafy.keeping.domain.payment.intent.model.PaymentIntentItem;
 import com.ssafy.keeping.domain.payment.intent.repository.PaymentIntentItemRepository;
 import com.ssafy.keeping.domain.payment.intent.repository.PaymentIntentRepository;
-import com.ssafy.keeping.domain.payment.qr.constant.QrMode;
 import com.ssafy.keeping.domain.payment.qr.constant.QrState;
 import com.ssafy.keeping.domain.payment.qr.model.QrToken;
 import com.ssafy.keeping.domain.payment.qr.repository.QrTokenRepository;
@@ -147,9 +146,6 @@ public class PaymentIntentService {
 
         if (qr.getExpiresAt() != null && now.isAfter(qr.getExpiresAt())) {
             throw new CustomException(ErrorCode.QR_EXPIRED); // QR 토큰이 만료되었습니다.
-        }
-        if (qr.getMode() != QrMode.CPQR) {
-            throw new CustomException(ErrorCode.QR_MODE_UNSUPPORTED); // 지원하지 않는 QR 모드입니다.
         }
         if (!Objects.equals(qr.getBindStoreId(), req.getStoreId())) {
             throw new CustomException(ErrorCode.QR_STORE_MISMATCH); // 바인딩된 매장과 일치하지 않는 요청입니다.
