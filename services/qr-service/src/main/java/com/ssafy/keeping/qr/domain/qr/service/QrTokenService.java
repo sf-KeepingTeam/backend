@@ -1,5 +1,7 @@
 package com.ssafy.keeping.qr.domain.qr.service;
 
+import com.ssafy.keeping.qr.common.exception.CustomException;
+import com.ssafy.keeping.qr.common.exception.ErrorCode;
 import com.ssafy.keeping.qr.domain.qr.dto.QrCreateRequest;
 import com.ssafy.keeping.qr.domain.qr.dto.QrCreateResponse;
 import com.ssafy.keeping.qr.domain.qr.model.QrToken;
@@ -19,13 +21,13 @@ public class QrTokenService {
 
     private final QrTokenRepository qrTokenRepository;
 
-    private static final int DEFAULT_TTL_SECONDS = 180;
+    private static final int TTL_SECONDS = 10;
 
     /**
      * QR 토큰 생성
      */
     public QrCreateResponse createQrToken(QrCreateRequest request, Long customerId) {
-        int ttl = request.getTtlSeconds() != null ? request.getTtlSeconds() : DEFAULT_TTL_SECONDS;
+        int ttl = TTL_SECONDS;
 
         // 기존 QR이 있으면 삭제 (중복 방지)
         qrTokenRepository.findByWalletId(request.getWalletId())
@@ -43,7 +45,6 @@ public class QrTokenService {
                 .tokenId(tokenId)
                 .walletId(request.getWalletId())
                 .customerId(customerId)
-                .mode(request.getMode())
                 .bindStoreId(request.getBindStoreId())
                 .createdAt(now)
                 .expiresAt(expiresAt)
@@ -61,10 +62,10 @@ public class QrTokenService {
      */
     public QrToken getValidToken(String tokenId) {
         QrToken token = qrTokenRepository.findByTokenId(tokenId)
-                .orElseThrow(() -> new IllegalArgumentException("유효하지 않은 QR 토큰입니다"));
+                .orElseThrow(() -> new CustomException(ErrorCode.QR_NOT_FOUND));
 
         if (token.isExpired()) {
-            throw new IllegalStateException("만료된 QR 토큰입니다");
+            throw new CustomException(ErrorCode.QR_EXPIRED);
         }
 
         return token;
