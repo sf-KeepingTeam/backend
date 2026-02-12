@@ -9,10 +9,6 @@ import com.ssafy.keeping.qr.acl.NotificationClient;
 import com.ssafy.keeping.qr.acl.StoreClient;
 import com.ssafy.keeping.qr.acl.dto.MenuResponse;
 import com.ssafy.keeping.qr.acl.dto.StoreResponse;
-import com.ssafy.keeping.qr.saga.constant.SagaEventType;
-import com.ssafy.keeping.qr.saga.constant.TargetService;
-import com.ssafy.keeping.qr.saga.dto.NotificationPayload;
-import com.ssafy.keeping.qr.saga.service.SagaLogService;
 import com.ssafy.keeping.qr.common.IdUtil;
 import com.ssafy.keeping.qr.common.exception.CustomException;
 import com.ssafy.keeping.qr.common.exception.ErrorCode;
@@ -56,7 +52,6 @@ public class PaymentIntentService {
     private final StoreClient storeClient;
     private final CustomerClient customerClient;
     private final NotificationClient notificationClient;
-    private final SagaLogService sagaLogService;
     private final ObjectMapper canonicalObjectMapper;
     private final Clock clock;
 
@@ -70,7 +65,6 @@ public class PaymentIntentService {
             StoreClient storeClient,
             CustomerClient customerClient,
             NotificationClient notificationClient,
-            SagaLogService sagaLogService,
             @Qualifier("canonicalObjectMapper") ObjectMapper canonicalObjectMapper,
             Clock clock
     ) {
@@ -83,7 +77,6 @@ public class PaymentIntentService {
         this.storeClient = storeClient;
         this.customerClient = customerClient;
         this.notificationClient = notificationClient;
-        this.sagaLogService = sagaLogService;
         this.canonicalObjectMapper = canonicalObjectMapper;
         this.clock = clock;
     }
@@ -153,9 +146,6 @@ public class PaymentIntentService {
         if (qr.getExpiresAt() != null && now.isAfter(qr.getExpiresAt())) {
             throw new CustomException(ErrorCode.QR_EXPIRED);
         }
-        if (!"CPQR".equals(qr.getMode())) {
-            throw new CustomException(ErrorCode.QR_MODE_UNSUPPORTED);
-        }
         if (!Objects.equals(qr.getBindStoreId(), req.getStoreId())) {
             throw new CustomException(ErrorCode.QR_STORE_MISMATCH);
         }
@@ -182,11 +172,10 @@ public class PaymentIntentService {
         Map<Long, MenuResponse> menuById = menus.stream()
                 .collect(Collectors.toMap(MenuResponse::getMenuId, m -> m));
 
-        // 합계 계산
+        // 합계 계산 (quantity 검증은 canonicalizeInitiateBody에서 완료됨)
         long total = 0L;
         for (PaymentInitiateItemDto item : req.getOrderItems()) {
             MenuResponse m = menuById.get(item.getMenuId());
-            if (item.getQuantity() <= 0) throw new CustomException(ErrorCode.PAYMENT_INIT_QUANTITY_INVALID);
             total += (long) m.getPrice() * item.getQuantity();
         }
 
@@ -272,6 +261,9 @@ public class PaymentIntentService {
                                                                  String idempotencyKeyHeader,
                                                                  Long customerId,
                                                                  ApproveRequest req) {
+        // ═══════════════════════════════════════════════════
+        // 입력 검증
+        // ═══════════════════════════════════════════════════
         if (idempotencyKeyHeader == null || idempotencyKeyHeader.isBlank()) {
             throw new CustomException(ErrorCode.IDEMPOTENCY_KEY_REQUIRED);
         }
@@ -279,6 +271,9 @@ public class PaymentIntentService {
             throw new CustomException(ErrorCode.PIN_REQUIRED);
         }
 
+        // ═══════════════════════════════════════════════════
+        // 멱등성 게이트
+        // ═══════════════════════════════════════════════════
         // 멱등 바디 정규화
         String canonicalBody = canonicalizeApproveBody(req);
         byte[] bodyHash = IdempotencyService.sha256(canonicalBody);
@@ -332,7 +327,7 @@ public class PaymentIntentService {
             throw new CustomException(ErrorCode.PAYMENT_INTENT_OWNER_MISMATCH);
         }
 
-        // PIN 검증
+        // PIN 검증 (모놀리식 서버 검사)
         boolean pinOk = customerClient.verifyPin(customerId, req.getPin());
         if (!pinOk) {
             throw new CustomException(ErrorCode.PIN_INVALID);
@@ -343,6 +338,12 @@ public class PaymentIntentService {
         FundsService.FundsResult funds = fundsService.capture(intent, intentItems);
 
         if (!funds.isSufficient()) {
+            String errorCode = funds.getErrorCode();
+            if ("PAYMENT_IN_PROGRESS".equals(errorCode)) {
+                throw new CustomException(ErrorCode.PAYMENT_IN_PROGRESS);
+            } else if ("FUNDS_CHANGED_BY_OTHER_PAYMENT".equals(errorCode)) {
+                throw new CustomException(ErrorCode.FUNDS_CHANGED_BY_OTHER_PAYMENT);
+            }
             throw new CustomException(ErrorCode.FUNDS_INSUFFICIENT);
         }
         if (!funds.isPolicyOk()) {
@@ -359,8 +360,8 @@ public class PaymentIntentService {
 
         PaymentIntentDetailResponse res = PaymentIntentDetailResponse.from(intent, itemViews);
 
-        // 알림 - Saga Log로 비동기 발행
-        publishApprovalNotifications(intent, customerId);
+        // 결제 승인 알림 - 동기 전송 (점주가 즉시 알림을 받아야 고객 퇴장 가능)
+        sendApprovalNotifications(intent, customerId);
 
         try {
             idempotencyService.completeStrict(slot, HttpStatus.OK.value(), res, intent.getPublicId());
@@ -371,35 +372,26 @@ public class PaymentIntentService {
         return IdempotentResult.ok(res);
     }
 
-    private void publishApprovalNotifications(PaymentIntent intent, Long customerId) {
+    private void sendApprovalNotifications(PaymentIntent intent, Long customerId) {
         try {
             StoreResponse store = storeClient.getStore(intent.getStoreId()).orElse(null);
             String storeName = store != null ? store.getStoreName() : "매장";
             Long ownerId = store != null ? store.getOwnerId() : null;
 
-            // 점주 알림 - Saga Log로 비동기 발행
+            // 점주 알림 - 동기 전송
             if (ownerId != null) {
-                NotificationPayload ownerPayload = NotificationPayload.forApprovalToOwner(intent, ownerId);
-                sagaLogService.publish(
-                        intent.getPublicId().toString(),
-                        SagaEventType.NOTIFICATION_APPROVED,
-                        TargetService.NOTIFICATION,
-                        ownerPayload
-                );
+                String ownerContent = String.format("%,d원 결제가 완료되었습니다.", intent.getAmount());
+                notificationClient.sendToOwner(ownerId, "PAYMENT_APPROVED", ownerContent);
             }
 
-            // 고객 알림 - Saga Log로 비동기 발행
-            NotificationPayload customerPayload = NotificationPayload.forApprovalToCustomer(intent, customerId, storeName);
-            sagaLogService.publish(
-                    intent.getPublicId().toString(),
-                    SagaEventType.NOTIFICATION_APPROVED,
-                    TargetService.NOTIFICATION,
-                    customerPayload
-            );
+            // 고객 알림 - 동기 전송
+            String customerContent = String.format("%s에서 %,d원 결제가 완료되었습니다.", storeName, intent.getAmount());
+            notificationClient.sendToCustomer(customerId, "PAYMENT_APPROVED", customerContent);
 
-            log.info("결제 승인 알림 Saga 발행 완료 - 손님ID: {}, 결제 금액: {}", customerId, intent.getAmount());
+            log.info("결제 승인 알림 전송 완료 - 손님ID: {}, 결제 금액: {}", customerId, intent.getAmount());
         } catch (Exception e) {
-            log.warn("결제 승인 알림 Saga 발행 실패 - 손님ID: {}", customerId);
+            log.warn("결제 승인 알림 전송 실패 - 손님ID: {}, error: {}", customerId, e.getMessage());
+            // 알림 실패해도 결제 승인은 성공 처리
         }
     }
 
