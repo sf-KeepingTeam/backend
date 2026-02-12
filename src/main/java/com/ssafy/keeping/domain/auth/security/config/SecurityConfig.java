@@ -131,9 +131,7 @@ public class SecurityConfig {
                         .requestMatchers("/loadtest/verify-owner").hasRole("OWNER")
                         .requestMatchers("/customers/**").hasRole("CUSTOMER")
                         .requestMatchers("/owners/**").hasRole("OWNER")
-                        .requestMatchers("/cpqr/new").hasRole("CUSTOMER")
-                        .requestMatchers("/cpqr/*/initiate").hasRole("OWNER")
-                        .requestMatchers("/payments/*/approve").hasRole("CUSTOMER")
+                        // QR 관련 경로는 QR Service에서 처리 (cpqr/*, payments/*/approve)
                         .requestMatchers("/stores/*/transactions/*/refund").hasRole("OWNER")
 
                         .anyRequest().authenticated() // 위에서 따로 허용해주지 않은 나머지 모든 요청은 “인증 필요”

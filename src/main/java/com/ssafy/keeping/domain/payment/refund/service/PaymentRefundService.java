@@ -11,7 +11,6 @@ import com.ssafy.keeping.domain.idempotency.repository.IdempotencyKeyRepository;
 import com.ssafy.keeping.domain.idempotency.service.IdempotencyService;
 import com.ssafy.keeping.domain.notification.entity.NotificationType;
 import com.ssafy.keeping.domain.notification.service.NotificationService;
-import com.ssafy.keeping.domain.payment.intent.dto.PaymentIntentDetailResponse;
 import com.ssafy.keeping.domain.payment.refund.dto.RefundResponse;
 import com.ssafy.keeping.domain.payment.transactions.constant.TransactionType;
 import com.ssafy.keeping.domain.payment.transactions.repository.TransactionRepository;

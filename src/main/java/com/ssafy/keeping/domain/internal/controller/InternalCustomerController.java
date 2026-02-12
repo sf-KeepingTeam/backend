@@ -44,6 +44,27 @@ public class InternalCustomerController {
     }
 
     /**
+     * PIN 설정 (테스트용)
+     */
+    @PostMapping("/{customerId}/pin-set")
+    public ResponseEntity<Void> setPin(
+            @PathVariable Long customerId,
+            @RequestBody PinVerifyRequest request,
+            @RequestHeader(value = "X-Internal-Auth", required = false) String authToken
+    ) {
+        validateInternalAuth(authToken);
+
+        // 고객 존재 여부 확인
+        customerRepository.findByCustomerIdAndDeletedAtIsNull(customerId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
+        // PIN 설정
+        pinAuthService.setOrUpdatePin(customerId, request.getPin());
+
+        return ResponseEntity.ok().build();
+    }
+
+    /**
      * PIN 검증
      */
     @PostMapping("/{customerId}/pin-verify")
