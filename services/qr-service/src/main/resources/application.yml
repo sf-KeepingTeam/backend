@@ -30,6 +30,7 @@ spring:
 # JWT 설정 (모놀리스와 같은 키 사용!)
 jwt:
   secret: ${JWT_SECRET:your-secret-key}
+  issuer: kakao-oauth2-jwt
 
 # 모놀리스 URL (ACL 호출용)
 monolith:
