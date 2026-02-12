@@ -1,15 +1,15 @@
 package com.ssafy.keeping.qr.domain.intent.controller;
 
-import com.ssafy.keeping.qr.common.exception.CustomException;
-import com.ssafy.keeping.qr.common.exception.ErrorCode;
 import com.ssafy.keeping.qr.common.response.ApiResponse;
 import com.ssafy.keeping.qr.domain.idempotency.model.IdempotentResult;
 import com.ssafy.keeping.qr.domain.intent.dto.ApproveRequest;
 import com.ssafy.keeping.qr.domain.intent.dto.PaymentIntentDetailResponse;
 import com.ssafy.keeping.qr.domain.intent.service.PaymentIntentService;
+import com.ssafy.keeping.qr.security.UserPrincipal;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -23,24 +23,18 @@ public class PaymentApprovalController {
 
     /**
      * 결제 승인
-     * Idempotency-Key 필수, 승인은 고객 인증이 필요합니다.
+     * - Idempotency-Key 필수
      */
     @PostMapping("/{intentId}/approve")
     public ResponseEntity<ApiResponse<PaymentIntentDetailResponse>> approve(
             @PathVariable("intentId") UUID intentId,
             @RequestHeader("Idempotency-Key") String idemKey,
-            @RequestHeader(value = "X-Customer-Id", required = false) Long customerId,
+            @AuthenticationPrincipal UserPrincipal principal,
             @Valid @RequestBody ApproveRequest body
     ) {
-        if (idemKey == null || idemKey.isBlank()) {
-            throw new CustomException(ErrorCode.IDEMPOTENCY_KEY_REQUIRED);
-        }
-
-        // TODO: JWT에서 customerId 추출 (현재는 헤더에서 임시로 받음)
-        Long effectiveCustomerId = customerId != null ? customerId : 1L;
-
+        // Idempotency-Key 검증은 Service에서 수행 (required=true이므로 null은 Spring이 처리)
         IdempotentResult<PaymentIntentDetailResponse> res =
-                paymentIntentService.approve(intentId, idemKey, effectiveCustomerId, body);
+                paymentIntentService.approve(intentId, idemKey, principal.id(), body);
 
         ResponseEntity.BodyBuilder builder = ResponseEntity.status(res.getHttpStatus());
         if (res.getRetryAfterSeconds() != null) {

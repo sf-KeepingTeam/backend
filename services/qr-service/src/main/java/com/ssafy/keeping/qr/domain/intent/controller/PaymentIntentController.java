@@ -5,10 +5,12 @@ import com.ssafy.keeping.qr.domain.idempotency.model.IdempotentResult;
 import com.ssafy.keeping.qr.domain.intent.dto.PaymentInitiateRequest;
 import com.ssafy.keeping.qr.domain.intent.dto.PaymentIntentDetailResponse;
 import com.ssafy.keeping.qr.domain.intent.service.PaymentIntentService;
+import com.ssafy.keeping.qr.security.UserPrincipal;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -27,14 +29,11 @@ public class PaymentIntentController {
     public ResponseEntity<ApiResponse<PaymentIntentDetailResponse>> initiate(
             @PathVariable String qrTokenId,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKeyHeader,
-            @RequestHeader(value = "X-Owner-Id", required = false) Long ownerId,
+            @AuthenticationPrincipal UserPrincipal principal,
             @Valid @RequestBody PaymentInitiateRequest body
     ) {
-        // TODO: JWT에서 ownerId 추출 (현재는 헤더에서 임시로 받음)
-        Long effectiveOwnerId = ownerId != null ? ownerId : 1L;
-
         IdempotentResult<PaymentIntentDetailResponse> res =
-                paymentIntentService.initiate(qrTokenId, idempotencyKeyHeader, effectiveOwnerId, body);
+                paymentIntentService.initiate(qrTokenId, idempotencyKeyHeader, principal.id(), body);
 
         return ResponseEntity
                 .status(res.getHttpStatus())

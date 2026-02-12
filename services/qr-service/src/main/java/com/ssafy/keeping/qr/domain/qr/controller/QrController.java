@@ -6,10 +6,12 @@ import com.ssafy.keeping.qr.domain.qr.dto.QrCreateResponse;
 import com.ssafy.keeping.qr.domain.qr.dto.QrTokenResponse;
 import com.ssafy.keeping.qr.domain.qr.model.QrToken;
 import com.ssafy.keeping.qr.domain.qr.service.QrTokenService;
+import com.ssafy.keeping.qr.security.UserPrincipal;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -26,12 +28,9 @@ public class QrController {
     @PostMapping
     public ResponseEntity<ApiResponse<QrCreateResponse>> createQr(
             @Valid @RequestBody QrCreateRequest request,
-            @RequestHeader(value = "X-Customer-Id", required = false) Long customerId
+            @AuthenticationPrincipal UserPrincipal principal
     ) {
-        // customerId가 없으면 임시값 사용 (테스트용)
-        Long effectiveCustomerId = customerId != null ? customerId : 1L;
-
-        QrCreateResponse response = qrTokenService.createQrToken(request, effectiveCustomerId);
+        QrCreateResponse response = qrTokenService.createQrToken(request, principal.id());
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(ApiResponse.success("QR 토큰이 생성되었습니다.", HttpStatus.CREATED.value(), response));
