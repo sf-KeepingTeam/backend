@@ -11,4 +11,5 @@ public class FundsResponse {
     private boolean sufficient;
     private boolean policyOk;
     private Long transactionId;
+    private String errorCode;
 }

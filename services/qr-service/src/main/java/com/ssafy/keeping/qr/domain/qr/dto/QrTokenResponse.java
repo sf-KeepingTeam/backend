@@ -16,7 +16,6 @@ public class QrTokenResponse {
     private String tokenId;
     private Long walletId;
     private Long customerId;
-    private String mode;
     private Long bindStoreId;
     private LocalDateTime createdAt;
     private LocalDateTime expiresAt;
@@ -26,7 +25,6 @@ public class QrTokenResponse {
                 .tokenId(token.getTokenId())
                 .walletId(token.getWalletId())
                 .customerId(token.getCustomerId())
-                .mode(token.getMode())
                 .bindStoreId(token.getBindStoreId())
                 .createdAt(token.getCreatedAt())
                 .expiresAt(token.getExpiresAt())

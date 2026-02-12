@@ -26,7 +26,6 @@ public class QrToken {
     private Long walletId;
 
     private Long customerId;
-    private String mode;
     private Long bindStoreId;
 
     private LocalDateTime createdAt;

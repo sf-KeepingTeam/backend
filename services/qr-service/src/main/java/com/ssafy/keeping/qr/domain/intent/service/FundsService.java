@@ -53,7 +53,8 @@ public class FundsService {
             return new FundsResult(
                     response.isSufficient(),
                     response.isPolicyOk(),
-                    response.getTransactionId()
+                    response.getTransactionId(),
+                    response.getErrorCode()
             );
 
         } catch (Exception e) {
@@ -73,27 +74,29 @@ public class FundsService {
         private final boolean sufficient;
         private final boolean policyOk;
         private final Long transactionId;
+        private final String errorCode;
 
-        public FundsResult(boolean sufficient, boolean policyOk, Long transactionId) {
+        public FundsResult(boolean sufficient, boolean policyOk, Long transactionId, String errorCode) {
             this.sufficient = sufficient;
             this.policyOk = policyOk;
             this.transactionId = transactionId;
+            this.errorCode = errorCode;
         }
 
         public static FundsResult insufficient() {
-            return new FundsResult(false, true, null);
+            return new FundsResult(false, true, null, null);
         }
 
         public static FundsResult policyViolation() {
-            return new FundsResult(true, false, null);
+            return new FundsResult(true, false, null, null);
         }
 
         public static FundsResult failed() {
-            return new FundsResult(false, false, null);
+            return new FundsResult(false, false, null, null);
         }
 
         public static FundsResult ok(Long txId) {
-            return new FundsResult(true, true, txId);
+            return new FundsResult(true, true, txId, null);
         }
 
         public boolean isSufficient() {
@@ -106,6 +109,10 @@ public class FundsService {
 
         public Long getTransactionId() {
             return transactionId;
+        }
+
+        public String getErrorCode() {
+            return errorCode;
         }
     }
 }
