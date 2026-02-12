@@ -29,23 +29,12 @@ spring:
 
 # JWT 설정 (모놀리스와 같은 키 사용!)
 jwt:
-  secret: ${JWT_SECRET:your-secret-key}
+  secret: ${JWT_SECRET:NbPg+8/rCm9yW15pYbbOTXdg1QTPqDcRMA8oauseuOqzrAdkLMcXfmbMLkqt3tZ5HecMd5bnCscx4Iuo2EjnJA==}
   issuer: kakao-oauth2-jwt
 
 # 모놀리스 URL (ACL 호출용)
 monolith:
   url: ${MONOLITH_URL:http://localhost:8080}
-
-# QR-Payment 서비스 URL (더 이상 사용하지 않음 - 자체 Redis 사용)
-# qr-payment:
-#   url: ${QR_PAYMENT_URL:http://localhost:8081}
-
-# 토스페이먼츠 설정
-payment:
-  toss:
-    secret-key: ${TOSS_SECRET_KEY:test_sk_Gv6LjeKD8aBnMEWAZA0Y3wYxAdXy}
-    base-url: https://api.tosspayments.com
-  provider: toss
 
 # 내부 서비스 통신 토큰
 internal:
@@ -60,3 +49,8 @@ management:
   endpoint:
     health:
       show-details: always
+
+# 로드테스트 백도어 (테스트용)
+loadtest:
+  backdoor:
+    enabled: ${LOADTEST_BACKDOOR_ENABLED:false}

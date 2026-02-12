@@ -2,7 +2,9 @@ package com.ssafy.keeping.qr.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ssafy.keeping.qr.security.JwtAuthenticationFilter;
+import com.ssafy.keeping.qr.security.LoadTestAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -25,6 +27,9 @@ public class SecurityConfig {
 
     private final JwtProperties jwtProperties;
     private final ObjectMapper objectMapper;
+
+    @Value("${loadtest.backdoor.enabled:false}")
+    private boolean loadTestEnabled;
 
     private static final String[] PUBLIC_PATHS = {
             "/actuator/**"
@@ -67,6 +72,10 @@ public class SecurityConfig {
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
+
+        if (loadTestEnabled) {
+            http.addFilterBefore(new LoadTestAuthenticationFilter(), JwtAuthenticationFilter.class);
+        }
 
         return http.build();
     }
