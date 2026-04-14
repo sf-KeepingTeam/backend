@@ -1,0 +1,121 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: monolith  # Tracing 로그에 표시될 서비스명
+
+  profiles:
+    active: local  # 기본 프로필: local
+
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQL8Dialect
+
+  security:
+    oauth2:
+      client:
+        provider:
+          kakao:
+            authorization-uri: https://kauth.kakao.com/oauth/authorize
+            token-uri: https://kauth.kakao.com/oauth/token
+            user-info-uri: https://kapi.kakao.com/v2/user/me
+            user-name-attribute: id
+            logout-uri: https://kauth.kakao.com/oauth/logout
+
+app:
+  auth:
+    jwt:
+      issuer: kakao-oauth2-jwt
+      access-ttl-seconds: 900   # 15분
+      refresh-ttl-seconds: 1209600 # 14일 (14 * 24 * 60 * 60)
+      cookie-name: ACCESS_TOKEN
+      cookie-secure: false      # 로컬은 false, 운영(HTTPS)은 true
+      cookie-same-site: Lax     # 로컬 테스트에 적당
+    redirect-after-login: /test # 카카오 로그인 성공 후, 서버가 어디로 보내줄지
+  kakao:
+    logout-redirect-uri: "http://localhost:8080/test/logout-complete" # 카카로 로그아웃 후, 서버가 어디로 보내줄지
+
+
+# Actuator + Tracing (분산 추적)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  tracing:
+    sampling:
+      probability: 1.0  # 100% 샘플링 (개발용, 운영에서는 0.1 권장)
+    enabled: true
+  zipkin:
+    tracing:
+      enabled: false  # Zipkin 서버 없이 로그 기반 추적
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
+  level:
+    org.springframework.security: INFO
+    org.springframework.web: INFO
+    com.ssafy.keeping: DEBUG
+
+sms:
+  api-key: ${SMS_API_KEY:}
+  api-secret: ${SMS_API_SECRET:}
+  send-number: ${SMS_SEND_NUMBER:}
+  base-url: https://api.coolsms.co.kr
+
+# 결제 설정 (토스페이먼츠)
+payment:
+  provider: toss  # 기본 결제 제공자 (toss, kakao, naver 등)
+  toss:
+    secret-key: ${TOSS_SECRET_KEY:test_sk_Gv6LjeKD8aBnMEWAZA0Y3wYxAdXy}  # 테스트 시크릿 키
+    base-url: https://api.tosspayments.com
+    connect-timeout: 5000
+    read-timeout: 10000
+
+cloud:
+  aws:
+    credentials:
+      access-key: ${AWS_ACCESS_KEY:}
+      secret-key: ${AWS_SECRET_KEY:}
+    region:
+      static: ${AWS_REGION:ap-southeast-2}
+    s3:
+      bucket: ${AWS_S3_BUCKET:aws-bucket-keeping-509}
+
+fcm:
+  service-account-file: classpath:firebase/keeping-firebase-adminsdk.json
+  project-id: "keeping-6130e"
+
+clova:
+  ocr:
+    url: ${CLOVA_OCR_URL:}
+    secret: ${CLOVA_OCR_SECRET:}
+    template-ids: ${CLOVA_TEMPLATE_IDS:39076}
+
+openai:
+  api:
+    key: ${OPENAI_API_KEY:}
+    url: ${OPENAI_API_URL:https://api.openai.com/v1/chat/completions}
+    model: ${OPENAI_MODEL:gpt-4o}
+    temperature: 0
+    timeout-ms: 30000
+
+# 롤백 스트림 설정 (타임아웃 시 보상 트랜잭션)
+rollback:
+  stream:
+    # true: Redis Streams에서 롤백 이벤트 소비 (MSA 환경)
+    # false: Consumer 비활성화 (모놀리스 단독 테스트)
+    enabled: ${ROLLBACK_STREAM_ENABLED:false}

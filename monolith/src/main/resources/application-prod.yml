@@ -1,0 +1,78 @@
+# 배포 서버 환경 설정 (Docker Compose)
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://mysql:3306/ssafy_fintech_db?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true}
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD:1234}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:redis}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+
+  security:
+    oauth2:
+      client:
+        registration:
+          kakao-customer:
+            provider: kakao
+            client-id: "c3a0cbbd1a2e0cbc8d06909f770c3128"
+            client-secret: "b4xLs9gHrHWMEn3apB0By7R2r5vUOIRc"
+            client-authentication-method: client_secret_post
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            scope:
+              - profile_nickname
+              - profile_image
+          kakao-owner:
+            provider: kakao
+            client-id: "c3a0cbbd1a2e0cbc8d06909f770c3128"
+            client-secret: "b4xLs9gHrHWMEn3apB0By7R2r5vUOIRc"
+            client-authentication-method: client_secret_post
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            scope:
+              - profile_nickname
+              - profile_image
+
+app:
+  auth:
+    jwt:
+      secret: ${JWT_SECRET:NbPg+8/rCm9yW15pYbbOTXdg1QTPqDcRMA8oauseuOqzrAdkLMcXfmbMLkqt3tZ5HecMd5bnCscx4Iuo2EjnJA==}
+    refresh-cookie:
+      name: REFRESH_TOKEN
+      same-site: Lax
+      secure: true
+      domain: ""
+      path: /auth
+
+# 내부 서비스 통신 토큰
+internal:
+  auth-token: ${INTERNAL_AUTH_TOKEN:internal-service-token-12345}
+
+fe:
+  base-url: ${FE_BASE_URL:http://localhost:3030}
+
+# QR Service 연동 설정
+qr-service:
+  url: ${QR_SERVICE_URL:http://qr-service:8082}
+  webhook:
+    enabled: ${QR_WEBHOOK_ENABLED:true}
+
+# Actuator + Prometheus
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
