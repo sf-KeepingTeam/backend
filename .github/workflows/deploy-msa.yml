@@ -52,9 +52,9 @@ jobs:
         username: ${{ secrets.EC2_USERNAME }}
         key: ${{ secrets.EC2_KEY }}
         script: |
-          cd ~/keeping
-          docker-compose pull monolith
-          docker-compose up -d monolith
+          cd /opt/keeping
+          docker compose pull monolith
+          docker compose up -d --no-deps monolith
           docker image prune -f
 
   # ===================================
@@ -100,7 +100,7 @@ jobs:
         username: ${{ secrets.EC2_USERNAME }}
         key: ${{ secrets.EC2_KEY }}
         script: |
-          cd ~/keeping
-          docker-compose pull qr-service
-          docker-compose up -d qr-service
+          cd /opt/keeping
+          docker compose pull qr-service
+          docker compose up -d --no-deps qr-service
           docker image prune -f
