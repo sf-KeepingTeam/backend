@@ -27,6 +27,7 @@
 4. [핵심 기능 상세](#4-핵심-기능-상세)
 5. [기술적 의사결정](#5-기술적-의사결정)
 6. [프로젝트 문서](#6-프로젝트-문서)
+7. [성능 검증 및 관측](#7-성능-검증-및-관측)
 
 ---
 
@@ -46,7 +47,7 @@
 | **Cache / Session** | Redis 7 (JWT Refresh 싱글세션, QR 토큰 TTL, PUSH 캐시) |
 | **Auth** | OAuth2 Kakao + JWT HS256 (jjwt 0.12.5/0.12.3) — Access 15분 / Refresh 14일 |
 | **Gateway** | Nginx (경로 기반 라우팅, `/internal/*` 외부 차단) |
-| **외부 연동** | Toss Payments, Firebase Admin (FCM), AWS S3, Clova OCR, OpenAI GPT-4V, CoolSMS |
+| **외부 연동** | Toss Payments, Firebase Admin (FCM), AWS S3, Clova OCR, OpenAI GPT-4V |
 | **회복탄력성** | Resilience4j 2.2.0 (Circuit Breaker + Retry, 3종 정책), Spring Retry |
 | **관측** | Micrometer + Prometheus + Brave Tracing, Zipkin reporter |
 | **계약 테스트** | Spring Cloud Contract 4.1.4 (producer=monolith, consumer=qr-service) |
@@ -514,3 +515,91 @@ qr-service → monolith 내부 호출은 **3가지 용도**로 나눠 각기 다
 | | [docs/portfolio/loadtest-results.md](./docs/portfolio/loadtest-results.md) | 부하테스트 결과 |
 | **이력** | [docs/history/](./docs/history/) | 운영 노트 / 트러블슈팅 기록 |
 | **아카이브** | [docs/archive/](./docs/archive/) | 완료된 마이그레이션·설계 문서 (역사 자료) |
+
+---
+
+## 7. 성능 검증 및 관측
+
+EC2 서버 2대(monolith t3.medium + qr-service t3.small)에 배포 후 **4가지 핵심 설계 결정**을 실증 검증했습니다.
+
+### 7-1. QR 서버 분리 + 캐시 효과 (k6 부하테스트)
+
+**A(캐시 모드) x B(배경 부하) 2x2 매트릭스**로 PUSH vs NONE 캐시 효과를 정량 측정.
+
+#### Intent p95 응답시간 (ms)
+
+| | 무부하 (BG=0) | 경부하 (BG=30) | **중부하 (BG=100)** |
+|---|---|---|---|
+| **PUSH** | 134 | 119 | **384** |
+| **NONE** | 164 | 157 | **590** |
+| **차이** | 1.22x | 1.32x | **1.54x** |
+
+**부하가 강할수록 캐시 효과가 극명**: 무부하 22% → 중부하 **54% 차이**. monolith CPU 99.8% 포화 상태에서도 PUSH 캐시가 Intent SLA(500ms)를 유지.
+
+| 서버 리소스 (BG=100) | monolith | qr-service |
+|---|---|---|
+| CPU | **99.8%** | 53% |
+| Load Average | **14.1** (2코어 7배) | 1.96 |
+| HikariCP Pending | **29건** | 9건 |
+| ERROR 건수 | 6,299 | **0건** |
+
+> qr-service 자체 ERROR 0건 — monolith 포화에도 qr-service는 안정적으로 동작.
+
+#### Grafana 대시보드 (Prometheus 메트릭)
+
+| monolith (BG=100 부하 시) | qr-service (BG=100 부하 시) |
+|---|---|
+| ![monolith basic](result/06_grafana_bg100_combined/mono/스크린샷%202026-04-17%20064552.png) | ![qr basic](result/06_grafana_bg100_combined/qr/스크린샷%202026-04-17%20064635.png) |
+| CPU 99.8%, Load 14.1 | CPU 53%, 여유 |
+
+| monolith HikariCP (Pending 29) | qr-service HikariCP (Pending 9) |
+|---|---|
+| ![mono hikari](result/06_grafana_bg100_combined/mono/스크린샷%202026-04-17%20064615.png) | ![qr hikari](result/06_grafana_bg100_combined/qr/스크린샷%202026-04-17%20064657.png) |
+
+### 7-2. 타임아웃 복구 시나리오 (UNCERTAIN → ROLLED_BACK)
+
+결제 캡처 경로에 장애를 주입하여 **UNCERTAIN 상태 전이 + 자동 복구**를 실증.
+
+```
+08:52:39  approve 호출 → PIN 검증 성공 (~200ms)
+08:52:42  capture timeout (3초) → UNCERTAIN 상태 DB 저장
+08:52:42  클라이언트에 504 "서비스 응답 시간이 초과되었습니다" 반환
+08:52:50  복구 스케줄러: UNCERTAIN 발견 → monolith 확인 → ROLLED_BACK (8초 만에 자동 복구)
+```
+
+#### Zipkin 타임라인 — 타임아웃 결제 상세 (핵심 증거)
+
+![timeout detail](result/07_zipkin_traces/06_timeout_detail_both_services.png)
+
+**Services: 2 (monolith + qr-service), 17 Spans**
+- PIN 검증: 682ms (정상 완료)
+- capture: qr-service 3.002s 에서 timeout (빨간 에러) vs monolith 5.110s 계속 처리
+- **qr-service가 끊은 후에도 monolith는 처리 계속** — 이것이 "결과를 모르는" UNCERTAIN의 본질
+
+#### 복구 스케줄러 트레이스 (양쪽 서비스 span)
+
+![recovery detail](result/07_zipkin_traces/08_recovery_both_services_139spans.png)
+
+**Services: 2, 139 Spans** — 복구 스케줄러가 monolith `/internal/payments/check`를 호출하여 결제 존재 여부 확인 후 ROLLED_BACK 처리. outcome: SUCCESS.
+
+### 7-3. 분산 추적 (Brave + Zipkin)
+
+모든 로그에 `[서비스명, traceId, spanId]`가 자동 주입되어 **하나의 traceId로 양쪽 서비스 로그를 즉시 재구성** 가능.
+
+#### traceId 로그 추적 — 양쪽 터미널 비교
+
+![traceid log](result/07_zipkin_traces/10_traceid_log_both_terminals.png)
+
+**상단 (qr-service)**: `[qr-service, 69e15d0d..., f68236...]` — 자금 캡처 완료, OWNER/CUSTOMER 알림 전송
+**하단 (monolith)**: `[monolith, 69e15d0d..., 5306a6...]` — 자금 캡처 완료 (txId=14475), 알림 DB 저장
+
+동일 traceId `69e15d0df284d19dc51921a0589df725`로 2개 서비스, 4개 span이 연결.
+
+### 7-4. 검증 중 발견한 버그 (수정 완료)
+
+| 버그 | 원인 | 수정 |
+|---|---|---|
+| UNCERTAIN이 "잔액 부족"으로 오인 | `PaymentIntentService.approve`에 `isUncertain()` 체크 누락 | uncertain 체크를 sufficient 보다 먼저 추가 |
+| UNCERTAIN DB 저장이 롤백됨 | `markIntentUncertain`이 approve `@Transactional`에 참여 | `IntentStatusUpdater` 신규 클래스, `REQUIRES_NEW` 별도 트랜잭션 |
+
+> 상세 리포트: [result/FINAL_REPORT.md](./result/FINAL_REPORT.md)
