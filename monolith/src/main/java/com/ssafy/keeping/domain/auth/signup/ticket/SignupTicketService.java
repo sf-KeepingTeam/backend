@@ -1,6 +1,8 @@
 package com.ssafy.keeping.domain.auth.signup.ticket;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ssafy.keeping.global.exception.CustomException;
+import com.ssafy.keeping.global.exception.constants.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -45,7 +47,7 @@ public class SignupTicketService {
         String key = PREFIX + ticket;
 
         String json = redis.opsForValue().get(key); // Redis에서 조회(GET)
-        if (json == null) return null; // TODO: ticket 존재 안 하면 null 말고 명확한 예외
+        if (json == null) throw new CustomException(ErrorCode.SIGNUP_TICKET_INVALID);
 
         try {
             return objectMapper.readValue(json, SignupTicketPayload.class);
