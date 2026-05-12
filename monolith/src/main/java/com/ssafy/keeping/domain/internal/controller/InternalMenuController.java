@@ -5,6 +5,7 @@ import com.ssafy.keeping.domain.internal.dto.MenuResponse;
 import com.ssafy.keeping.domain.internal.exception.InternalApiAuthException;
 import com.ssafy.keeping.domain.menu.model.Menu;
 import com.ssafy.keeping.domain.menu.repository.MenuRepository;
+import com.ssafy.keeping.global.constants.HttpHeaderConstants;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,7 +35,7 @@ public class InternalMenuController {
     @PostMapping("/batch")
     public ResponseEntity<List<MenuResponse>> getMenusBatch(
             @RequestBody BatchMenuRequest request,
-            @RequestHeader(value = "X-Internal-Auth", required = false) String authToken
+            @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
     ) {
         validateInternalAuth(authToken);
 
@@ -53,7 +54,7 @@ public class InternalMenuController {
     @GetMapping("/{menuId}")
     public ResponseEntity<MenuResponse> getMenu(
             @PathVariable Long menuId,
-            @RequestHeader(value = "X-Internal-Auth", required = false) String authToken
+            @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
     ) {
         validateInternalAuth(authToken);
 
@@ -72,7 +73,7 @@ public class InternalMenuController {
      */
     @GetMapping("/all")
     public ResponseEntity<List<MenuResponse>> getAllMenus(
-            @RequestHeader(value = "X-Internal-Auth", required = false) String authToken
+            @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
     ) {
         validateInternalAuth(authToken);
 

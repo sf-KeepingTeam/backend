@@ -4,6 +4,7 @@ import com.ssafy.keeping.domain.internal.dto.MenuResponse;
 import com.ssafy.keeping.domain.internal.dto.StoreResponse;
 import com.ssafy.keeping.domain.menu.model.Menu;
 import com.ssafy.keeping.domain.store.model.Store;
+import com.ssafy.keeping.global.constants.HttpHeaderConstants;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -168,7 +169,7 @@ public class QrServiceWebhookPublisher {
     private HttpHeaders createHeaders() {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("X-Internal-Auth", internalAuthToken);
+        headers.set(HttpHeaderConstants.X_INTERNAL_AUTH, internalAuthToken);
         return headers;
     }
 }

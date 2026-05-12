@@ -7,6 +7,7 @@ import com.ssafy.keeping.domain.internal.dto.PinVerifyResponse;
 import com.ssafy.keeping.domain.internal.exception.InternalApiAuthException;
 import com.ssafy.keeping.domain.user.customer.model.Customer;
 import com.ssafy.keeping.domain.user.customer.repository.CustomerRepository;
+import com.ssafy.keeping.global.constants.HttpHeaderConstants;
 import com.ssafy.keeping.global.exception.CustomException;
 import com.ssafy.keeping.global.exception.constants.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -36,7 +37,7 @@ public class InternalCustomerController {
     @GetMapping("/{customerId}")
     public ResponseEntity<CustomerResponse> getCustomer(
             @PathVariable Long customerId,
-            @RequestHeader(value = "X-Internal-Auth", required = false) String authToken
+            @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
     ) {
         validateInternalAuth(authToken);
 
@@ -53,7 +54,7 @@ public class InternalCustomerController {
     public ResponseEntity<Void> setPin(
             @PathVariable Long customerId,
             @RequestBody PinVerifyRequest request,
-            @RequestHeader(value = "X-Internal-Auth", required = false) String authToken
+            @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
     ) {
         validateInternalAuth(authToken);
 
@@ -74,7 +75,7 @@ public class InternalCustomerController {
     public ResponseEntity<PinVerifyResponse> verifyPin(
             @PathVariable Long customerId,
             @RequestBody PinVerifyRequest request,
-            @RequestHeader(value = "X-Internal-Auth", required = false) String authToken
+            @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
     ) {
         validateInternalAuth(authToken);
 

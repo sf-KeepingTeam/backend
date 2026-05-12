@@ -14,6 +14,7 @@ import com.ssafy.keeping.domain.wallet.repository.WalletStoreBalanceRepository;
 import com.ssafy.keeping.global.exception.CustomException;
 import com.ssafy.keeping.global.exception.constants.ErrorCode;
 import com.ssafy.keeping.global.s3.service.ImageService;
+import com.ssafy.keeping.global.util.TxUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -33,9 +34,6 @@ public class StoreService {
     private final ImageService imageService;
     private final QrServiceWebhookPublisher webhookPublisher;
 
-    /**
-     * 가게 생성 (간소화 버전 - 외부 API merchantId 생성 제거)
-     */
     @Transactional
     public StoreResponseDto createStore(Long ownerId, StoreRequestDto requestDto) {
         Owner owner = validOwner(ownerId);
@@ -70,8 +68,9 @@ public class StoreService {
         log.info("가게 등록 완료 - storeId: {}, storeName: {}, ownerId: {}",
                 store.getStoreId(), store.getStoreName(), ownerId);
 
-        // QR Service 캐시 갱신 Push (비동기)
-        webhookPublisher.publishStoreUpdate(store);
+        // 트랜잭션 커밋 성공 후에만 캐시 갱신 webhook 발행
+        final Store committed = store;
+        TxUtils.afterCommit(() -> webhookPublisher.publishStoreUpdate(committed));
 
         return StoreResponseDto.fromEntity(store);
     }
@@ -104,8 +103,8 @@ public class StoreService {
 
         Store saved = storeRepository.save(store);
 
-        // QR Service 캐시 갱신 Push (비동기)
-        webhookPublisher.publishStoreUpdate(saved);
+        // 트랜잭션 커밋 성공 후에만 캐시 갱신 webhook 발행
+        TxUtils.afterCommit(() -> webhookPublisher.publishStoreUpdate(saved));
 
         return StoreResponseDto.fromEntity(saved);
     }
@@ -126,8 +125,8 @@ public class StoreService {
 
         Store saved = storeRepository.save(store);
 
-        // QR Service 캐시 삭제 Push (비동기)
-        webhookPublisher.publishStoreDelete(storeId);
+        // 트랜잭션 커밋 성공 후에만 캐시 삭제 webhook 발행
+        TxUtils.afterCommit(() -> webhookPublisher.publishStoreDelete(storeId));
 
         return StoreResponseDto.fromEntity(saved);
     }

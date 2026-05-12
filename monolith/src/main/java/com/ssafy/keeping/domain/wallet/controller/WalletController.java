@@ -4,6 +4,7 @@ import com.ssafy.keeping.domain.auth.security.principal.UserPrincipal;
 import com.ssafy.keeping.domain.idempotency.model.IdempotentResult;
 import com.ssafy.keeping.domain.wallet.dto.*;
 import com.ssafy.keeping.domain.wallet.service.WalletService;
+import com.ssafy.keeping.global.constants.HttpHeaderConstants;
 import com.ssafy.keeping.global.response.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -36,7 +37,7 @@ public class WalletController {
             @AuthenticationPrincipal UserPrincipal principal,
             @PathVariable Long groupId,
             @PathVariable Long storeId,
-            @RequestHeader("Idempotency-Key") String idemKey,
+            @RequestHeader(HttpHeaderConstants.IDEMPOTENCY_KEY) String idemKey,
             @RequestBody @Valid PointShareRequestDto req
     ) {
         Long customerId = principal.id();
@@ -78,7 +79,7 @@ public class WalletController {
             @AuthenticationPrincipal UserPrincipal principal,
             @PathVariable Long groupId,
             @PathVariable Long storeId,
-            @RequestHeader("Idempotency-Key") String idemKey,
+            @RequestHeader(HttpHeaderConstants.IDEMPOTENCY_KEY) String idemKey,
             @RequestBody @Valid PointShareRequestDto req
     ) {
         Long customerId = principal.id();

@@ -16,6 +16,7 @@ import com.ssafy.keeping.domain.user.owner.repository.OwnerRepository;
 import com.ssafy.keeping.global.exception.CustomException;
 import com.ssafy.keeping.global.exception.constants.ErrorCode;
 import com.ssafy.keeping.global.s3.service.ImageService;
+import com.ssafy.keeping.global.util.TxUtils;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -36,9 +37,6 @@ public class MenuService {
     private final ImageService imageService;
     private final QrServiceWebhookPublisher webhookPublisher;
 
-    /*
-    * 권한 필요 없는 메서드
-    * */
     public List<MenuResponseDto> getAllMenus(Long storeId) {
         storeRepository.findById(storeId).orElseThrow(
                 () -> new CustomException(ErrorCode.STORE_NOT_FOUND)
@@ -101,8 +99,8 @@ public class MenuService {
                             .build()
                     );
 
-        // QR Service 캐시 갱신 Push (비동기)
-        webhookPublisher.publishMenuUpdate(saved);
+        // 트랜잭션 커밋 성공 후에만 캐시 갱신 webhook 발행
+        TxUtils.afterCommit(() -> webhookPublisher.publishMenuUpdate(saved));
 
         return new MenuResponseDto(
                 saved.getMenuId(),
@@ -142,8 +140,8 @@ public class MenuService {
 
         menu.editMenu(name, imgUrl, price, desc, order);
 
-        // QR Service 캐시 갱신 Push (비동기)
-        webhookPublisher.publishMenuUpdate(menu);
+        // 트랜잭션 커밋 성공 후에만 캐시 갱신 webhook 발행
+        TxUtils.afterCommit(() -> webhookPublisher.publishMenuUpdate(menu));
 
         return new MenuResponseDto(
                 menu.getMenuId(), storeId, menu.getMenuName(),
@@ -164,8 +162,8 @@ public class MenuService {
 
         menuRepository.deleteById(menusId);
 
-        // QR Service 캐시 삭제 Push (비동기)
-        webhookPublisher.publishMenuDelete(menusId);
+        // 트랜잭션 커밋 성공 후에만 캐시 삭제 webhook 발행
+        TxUtils.afterCommit(() -> webhookPublisher.publishMenuDelete(menusId));
     }
 
     public void deleteAllMenu(Long ownerId, Long storeId) {

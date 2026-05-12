@@ -197,20 +197,4 @@ public class CancelService {
                 .build();
     }
 
-    /**
-     * Transaction을 CancelListResponseDto로 변환
-     */
-    private CancelListResponseDto convertToDto(Transaction transaction) {
-        WalletStoreLot lot = walletStoreLotRepository
-                .findByOriginChargeTransaction(transaction)
-                .orElseThrow(() -> new CustomException(ErrorCode.WALLET_NOT_FOUND));
-
-        return CancelListResponseDto.builder()
-                .transactionUniqueNo(transaction.getTransactionUniqueNo())
-                .storeName(transaction.getStore().getStoreName())
-                .paymentAmount(transaction.getAmount())
-                .transactionTime(transaction.getCreatedAt())
-                .remainingBalance(lot.getAmountRemaining())
-                .build();
-    }
 }

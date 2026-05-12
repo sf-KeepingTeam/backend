@@ -3,6 +3,7 @@ package com.ssafy.keeping.domain.internal.controller;
 import com.ssafy.keeping.domain.internal.dto.PaymentCheckResponse;
 import com.ssafy.keeping.domain.internal.exception.InternalApiAuthException;
 import com.ssafy.keeping.domain.internal.service.InternalPaymentService;
+import com.ssafy.keeping.global.constants.HttpHeaderConstants;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,7 +31,7 @@ public class InternalPaymentController {
     @GetMapping("/check")
     public ResponseEntity<PaymentCheckResponse> checkPayment(
             @RequestParam String idempotencyKey,
-            @RequestHeader(value = "X-Internal-Auth", required = false) String authToken
+            @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
     ) {
         validateInternalAuth(authToken);
 

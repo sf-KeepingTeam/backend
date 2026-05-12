@@ -5,6 +5,7 @@ import com.ssafy.keeping.domain.internal.exception.InternalApiAuthException;
 import com.ssafy.keeping.domain.store.constant.StoreStatus;
 import com.ssafy.keeping.domain.store.model.Store;
 import com.ssafy.keeping.domain.store.repository.StoreRepository;
+import com.ssafy.keeping.global.constants.HttpHeaderConstants;
 import com.ssafy.keeping.global.exception.CustomException;
 import com.ssafy.keeping.global.exception.constants.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -35,7 +36,7 @@ public class InternalStoreController {
     @GetMapping("/{storeId}")
     public ResponseEntity<StoreResponse> getStore(
             @PathVariable Long storeId,
-            @RequestHeader(value = "X-Internal-Auth", required = false) String authToken
+            @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
     ) {
         validateInternalAuth(authToken);
 
@@ -50,7 +51,7 @@ public class InternalStoreController {
      */
     @GetMapping("/all")
     public ResponseEntity<List<StoreResponse>> getAllStores(
-            @RequestHeader(value = "X-Internal-Auth", required = false) String authToken
+            @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
     ) {
         validateInternalAuth(authToken);
 

@@ -4,6 +4,7 @@ import com.ssafy.keeping.domain.internal.dto.NotificationRequest;
 import com.ssafy.keeping.domain.internal.exception.InternalApiAuthException;
 import com.ssafy.keeping.domain.notification.entity.NotificationType;
 import com.ssafy.keeping.domain.notification.service.NotificationService;
+import com.ssafy.keeping.global.constants.HttpHeaderConstants;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -32,7 +33,7 @@ public class InternalNotificationController {
     @PostMapping("/send")
     public ResponseEntity<Map<String, String>> sendNotification(
             @RequestBody NotificationRequest request,
-            @RequestHeader(value = "X-Internal-Auth", required = false) String authToken
+            @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
     ) {
         validateInternalAuth(authToken);
 

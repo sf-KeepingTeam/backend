@@ -8,6 +8,7 @@ import com.ssafy.keeping.domain.internal.dto.RefundResponse;
 import com.ssafy.keeping.domain.internal.dto.WalletBalanceResponse;
 import com.ssafy.keeping.domain.internal.exception.InternalApiAuthException;
 import com.ssafy.keeping.domain.internal.service.InternalWalletService;
+import com.ssafy.keeping.global.constants.HttpHeaderConstants;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,7 +38,7 @@ public class InternalWalletController {
     public ResponseEntity<WalletBalanceResponse> getBalance(
             @PathVariable Long walletId,
             @PathVariable Long storeId,
-            @RequestHeader(value = "X-Internal-Auth", required = false) String authToken
+            @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
     ) {
         validateInternalAuth(authToken);
 
@@ -53,8 +54,8 @@ public class InternalWalletController {
     public ResponseEntity<?> capture(
             @PathVariable Long walletId,
             @PathVariable Long storeId,
-            @RequestHeader(value = "X-Internal-Auth", required = false) String authToken,
-            @RequestHeader(value = "Idempotency-Key") String idempotencyKey,
+            @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken,
+            @RequestHeader(value = HttpHeaderConstants.IDEMPOTENCY_KEY) String idempotencyKey,
             @RequestBody FundsCaptureRequest request
     ) {
         validateInternalAuth(authToken);
@@ -76,7 +77,7 @@ public class InternalWalletController {
     public ResponseEntity<Void> restore(
             @PathVariable Long walletId,
             @PathVariable Long storeId,
-            @RequestHeader(value = "X-Internal-Auth", required = false) String authToken,
+            @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken,
             @RequestBody RestoreRequest request
     ) {
         validateInternalAuth(authToken);
@@ -92,8 +93,8 @@ public class InternalWalletController {
     @PostMapping("/{walletId}/refund")
     public ResponseEntity<?> refund(
             @PathVariable Long walletId,
-            @RequestHeader(value = "X-Internal-Auth", required = false) String authToken,
-            @RequestHeader(value = "Idempotency-Key") String idempotencyKey,
+            @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken,
+            @RequestHeader(value = HttpHeaderConstants.IDEMPOTENCY_KEY) String idempotencyKey,
             @RequestBody RefundRequest request
     ) {
         validateInternalAuth(authToken);

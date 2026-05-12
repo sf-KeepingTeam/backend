@@ -27,10 +27,7 @@ public enum NotificationType {
     MEMBER_EXPELLED("모임원 내보내기"),
     GROUP_POINT_SHARED("모임 지갑에 포인트 공유"),
     GROUP_LEFT("모임 나가기"),
-    GROUP_DISBANDED("모임 해체"),
-    // 시스템 관련
-    DLQ_NOTICE("DLQ 생성"),
-    ANOMALY_DETECTED("이상거래 탐지");
+    GROUP_DISBANDED("모임 해체");
 
     private final String displayName;
 

@@ -4,6 +4,7 @@ import com.ssafy.keeping.domain.auth.security.principal.UserPrincipal;
 import com.ssafy.keeping.domain.idempotency.model.IdempotentResult;
 import com.ssafy.keeping.domain.payment.refund.dto.RefundResponse;
 import com.ssafy.keeping.domain.payment.refund.service.PaymentRefundService;
+import com.ssafy.keeping.global.constants.HttpHeaderConstants;
 import com.ssafy.keeping.global.exception.CustomException;
 import com.ssafy.keeping.global.exception.constants.ErrorCode;
 import com.ssafy.keeping.global.response.ApiResponse;
@@ -38,7 +39,7 @@ public class PaymentRefundController {
     public ResponseEntity<ApiResponse<RefundResponse>> refund(
             @PathVariable Long storeId,
             @PathVariable Long transactionId,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestHeader(value = HttpHeaderConstants.IDEMPOTENCY_KEY, required = false) String idempotencyKey,
             @AuthenticationPrincipal UserPrincipal principal
     ) {
         Long ownerId = principal.id();
