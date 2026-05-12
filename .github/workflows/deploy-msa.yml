@@ -152,7 +152,7 @@ jobs:
             echo "⏳ QR Service 기동 대기..."
             for i in $(seq 1 9); do
               sleep 10
-              STATUS=$(curl -sf http://localhost:8082/actuator/health | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "DOWN")
+              STATUS=$(curl -sf http://localhost:8081/actuator/health | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "DOWN")
               echo "[$i] status=$STATUS"
               if [ "$STATUS" = "UP" ]; then
                 echo "✅ QR Service 정상 기동"

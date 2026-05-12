@@ -7,7 +7,7 @@
 # 구성:
 #   - nginx: API Gateway (포트 80)
 #   - monolith: 기존 Spring Boot 앱 (내부 8080)
-#   - qr-service: QR 토큰 생성 + QR 결제 처리 (내부 8082)
+#   - qr-service: QR 토큰 생성 + QR 결제 처리 (내부 8081)
 #   - mysql: 데이터베이스
 #   - redis: 캐시 + QR 토큰 저장
 
@@ -91,7 +91,7 @@ services:
       redis:
         condition: service_healthy
     expose:
-      - "8082"
+      - "8081"
     environment:
       SPRING_PROFILES_ACTIVE: docker
       DB_URL: jdbc:mysql://mysql:3306/payment_service?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true
@@ -106,7 +106,7 @@ services:
     networks:
       - keeping-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
       interval: 30s
       timeout: 10s
       retries: 3
