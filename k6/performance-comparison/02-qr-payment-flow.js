@@ -51,8 +51,9 @@ import {
 //  커스텀 메트릭 — 각 단계의 응답시간을 개별 측정
 // ============================================================
 const qrCreateTime = new Trend('qr_create_time', true);   // 1단계: QR 생성
-const intentTime = new Trend('intent_time', true);         // 2단계: 결제 요청
-const approveTime = new Trend('approve_time', true);       // 3단계: 결제 승인
+const scanTime = new Trend('scan_time', true);             // 2단계: 점주 스캔
+const intentTime = new Trend('intent_time', true);         // 3단계: 결제 요청
+const approveTime = new Trend('approve_time', true);       // 4단계: 결제 승인
 const totalFlowTime = new Trend('total_flow_time', true);  // 전체 플로우 소요시간
 
 const paymentSuccess = new Rate('payment_success_rate');    // 결제 성공률
@@ -149,11 +150,42 @@ export default function () {
 
         const tokenId = qrRes.json('data').tokenId;
 
-        // 점주가 QR을 스캔하는 시간을 시뮬레이션 (0.3초)
+        // ══════════════════════════════════════════
+        //  2단계: QR 스캔 (점주 역할) → 세션 토큰 발급
+        // ══════════════════════════════════════════
+        //  점주가 고객 QR을 스캔합니다. QR 토큰(TTL 10s)은 소비·삭제되고
+        //  세션 토큰(TTL 3분)이 발급됩니다. 이후 initiate 는 세션 토큰으로 진행.
+        // ──────────────────────────────────────────
+        const scanStart = Date.now();
+        const scanRes = http.post(
+            `${BASE_URL}/api/qr/${tokenId}/scan`,
+            null,
+            { headers: ownerHeaders }
+        );
+        scanTime.add(Date.now() - scanStart);
+
+        const scanOk = check(scanRes, {
+            'Scan: status 200': (r) => r.status === 200,
+            'Scan: sessionToken 존재': (r) => {
+                try { return r.json().data && r.json().data.sessionToken; }
+                catch (e) { return false; }
+            },
+        });
+
+        if (!scanOk) {
+            paymentFailures.add(1);
+            paymentSuccess.add(false);
+            console.error(`[2단계 실패] Scan: ${scanRes.status} - ${scanRes.body}`);
+            return;
+        }
+
+        const sessionToken = scanRes.json('data').sessionToken;
+
+        // 점주가 메뉴를 입력하는 시간 시뮬레이션 (0.3초)
         sleep(0.3);
 
         // ══════════════════════════════════════════
-        //  2단계: 결제 요청 생성 — Intent (점주 역할)
+        //  3단계: 결제 요청 생성 — Intent (점주 역할)
         // ══════════════════════════════════════════
         //  점주가 QR을 스캔하고, 메뉴와 수량을 입력합니다.
         //  서버에서는 Store/Menu 정보를 조회해야 합니다.
@@ -168,7 +200,7 @@ export default function () {
 
         const intentStart = Date.now();
         const intentRes = http.post(
-            `${BASE_URL}/api/qr/cpqr/${tokenId}/initiate`,
+            `${BASE_URL}/cpqr/${sessionToken}/initiate`,
             JSON.stringify({
                 storeId: storeId,
                 orderItems: [{ menuId: menuId, quantity: 1 }],
@@ -188,7 +220,7 @@ export default function () {
         if (!intentOk) {
             paymentFailures.add(1);
             paymentSuccess.add(false);
-            console.error(`[2단계 실패] Intent: ${intentRes.status} - ${intentRes.body}`);
+            console.error(`[3단계 실패] Intent: ${intentRes.status} - ${intentRes.body}`);
             return;
         }
 
@@ -198,7 +230,7 @@ export default function () {
         sleep(0.3);
 
         // ══════════════════════════════════════════
-        //  3단계: 결제 승인 — Approve (소비자 역할)
+        //  4단계: 결제 승인 — Approve (소비자 역할)
         // ══════════════════════════════════════════
         //  소비자가 결제 내역을 확인하고 PIN 번호를 입력합니다.
         //  서버에서는:
@@ -215,7 +247,7 @@ export default function () {
 
         const approveStart = Date.now();
         const approveRes = http.post(
-            `${BASE_URL}/api/qr/payments/${intentId}/approve`,
+            `${BASE_URL}/payments/${intentId}/approve`,
             JSON.stringify({
                 pin: TEST_DATA.PIN,
             }),
@@ -230,7 +262,7 @@ export default function () {
         if (!approveOk) {
             paymentFailures.add(1);
             paymentSuccess.add(false);
-            console.error(`[3단계 실패] Approve: ${approveRes.status} - ${approveRes.body}`);
+            console.error(`[4단계 실패] Approve: ${approveRes.status} - ${approveRes.body}`);
             return;
         }
 

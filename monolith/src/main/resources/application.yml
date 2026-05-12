@@ -42,6 +42,8 @@ app:
     logout-redirect-uri: "http://localhost:8080/test/logout-complete" # 카카로 로그아웃 후, 서버가 어디로 보내줄지
 
 
+# NOTE: 아래 management / logging.pattern 블록은 qr-service/src/main/resources/application.yml 와
+#       수동 동기화 대상. 한쪽만 수정하지 말 것. (독립 Gradle 프로젝트라 YAML 공유 불가)
 # Actuator + Tracing (분산 추적)
 management:
   endpoints:
@@ -69,12 +71,6 @@ logging:
     org.springframework.security: INFO
     org.springframework.web: INFO
     com.ssafy.keeping: DEBUG
-
-sms:
-  api-key: ${SMS_API_KEY:}
-  api-secret: ${SMS_API_SECRET:}
-  send-number: ${SMS_SEND_NUMBER:}
-  base-url: https://api.coolsms.co.kr
 
 # 결제 설정 (토스페이먼츠)
 payment:
@@ -109,13 +105,3 @@ openai:
   api:
     key: ${OPENAI_API_KEY:}
     url: ${OPENAI_API_URL:https://api.openai.com/v1/chat/completions}
-    model: ${OPENAI_MODEL:gpt-4o}
-    temperature: 0
-    timeout-ms: 30000
-
-# 롤백 스트림 설정 (타임아웃 시 보상 트랜잭션)
-rollback:
-  stream:
-    # true: Redis Streams에서 롤백 이벤트 소비 (MSA 환경)
-    # false: Consumer 비활성화 (모놀리스 단독 테스트)
-    enabled: ${ROLLBACK_STREAM_ENABLED:false}

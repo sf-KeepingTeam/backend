@@ -75,11 +75,5 @@ cloud:
 fe:
   base-url: http://localhost:3000
 
-sms:
-  api-key: test
-  api-secret: test
-  send-number: "01000000000"
-  base-url: https://api.coolsms.co.kr
-
 jwt:
   secret: testtesttesttesttesttesttesttest

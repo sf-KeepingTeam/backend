@@ -64,15 +64,8 @@ qr-service:
   webhook:
     enabled: ${QR_WEBHOOK_ENABLED:true}
 
-# Actuator + Prometheus
+# Actuator: base(application.yml) 의 management 블록 상속. prod 에서는 트레이스 샘플링만 낮춘다.
 management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics,prometheus
-  endpoint:
-    health:
-      show-details: always
-  metrics:
-    tags:
-      application: ${spring.application.name}
+  tracing:
+    sampling:
+      probability: 0.1   # prod: 10% (base 는 1.0 - 개발용)

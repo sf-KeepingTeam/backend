@@ -4,9 +4,12 @@ build/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/
-**/*.md
+docs/**/*.md
+!**/CLAUDE.md
+!.claude/commands/*.md
 **/gradle.properties
-**/.claude/
+# .claude 로컬 전용 파일만 제외 (프로젝트 설정은 커밋)
+.claude/settings.local.json
 docker-compose.yml
 
 ### STS ###
@@ -68,9 +71,16 @@ src/resources/firebase/keeping-firebase-adminsdk.json
 src/resources/application.yml
 
 ### Claude Code Files ###
-.claude/
-CLAUDE.md
+# CLAUDE.md는 각 디렉토리에서 직접 git add -f 로 추가 (tracked 상태 유지)
 CLAUDE.local.md
+
+# .claude/ 프로젝트 설정은 커밋 대상 (settings.local.json만 제외)
+!.claude/
+!.claude/**
+!.claude/commands/
+!.claude/commands/*.md
+!.claude/hooks/
+!.claude/hooks/*.sh
 
 ### Environment Variables ###
 .env
