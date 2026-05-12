@@ -1,9 +1,20 @@
 global:
-  scrape_interval: 15s # 15초마다 수집
+  scrape_interval: 15s
 
 scrape_configs:
-  - job_name: 'spring-boot-app'
+  # docker-compose.msa.yml 의 'observability' 프로파일로 Prometheus 를 기동하는 경우 기준.
+  # 로컬 호스트에서 서비스를 띄우고 Prometheus 만 Docker 인 경우에는
+  # targets 값을 host.docker.internal:8080 / host.docker.internal:8082 로 교체.
+  - job_name: 'monolith'
     metrics_path: '/actuator/prometheus'
     static_configs:
-      - targets: ['host.docker.internal:8080'] # 로컬 실행 시 Docker 내부에서 호스트 접근을 위해 사용
-        # "내 컴퓨터의 8080포트로 가라"는 뜻
+      - targets: ['monolith:8080']
+        labels:
+          service: monolith
+
+  - job_name: 'qr-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['qr-service:8082']
+        labels:
+          service: qr-service

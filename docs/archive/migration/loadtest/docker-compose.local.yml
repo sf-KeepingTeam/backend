@@ -86,7 +86,7 @@ services:
       - JWT_SECRET=NbPg+8/rCm9yW15pYbbOTXdg1QTPqDcRMA8oauseuOqzrAdkLMcXfmbMLkqt3tZ5HecMd5bnCscx4Iuo2EjnJA==
       - INTERNAL_AUTH_TOKEN=loadtest-internal-token
       - LOADTEST_BACKDOOR_ENABLED=true
-      - CACHE_MODE=PUSH
+      - CACHE_MODE=WRITE_THROUGH
       - CACHE_WARMING_ENABLED=true
     depends_on:
       qr-mysql:

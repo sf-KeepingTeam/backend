@@ -52,7 +52,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      SPRING_PROFILES_ACTIVE: prod,loadtest
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/keeping?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-1234}
@@ -65,7 +65,8 @@ services:
       CLOUD_AWS_CREDENTIALS_SECRET_KEY: ${AWS_SECRET_KEY:-}
       CLOUD_AWS_REGION_STATIC: ${AWS_REGION:-ap-northeast-2}
       CLOUD_AWS_S3_BUCKET: ${AWS_S3_BUCKET:-}
-      LOADTEST_BACKDOOR_ENABLED: "true"
+      # ⚠️ 개발 테스트 시에만 true. 운영 배포 전 반드시 false 확인
+      LOADTEST_BACKDOOR_ENABLED: ${LOADTEST_BACKDOOR_ENABLED:-false}
       JAVA_OPTS: "-Xms512m -Xmx1536m"
       FE_BASE_URL: ${FE_BASE_URL:-http://localhost:3030}
     networks:
@@ -81,11 +82,7 @@ services:
   # QR Service (QR 토큰 생성 + 결제 처리)
   # ==========================================
   qr-service:
-    build:
-      context: ./qr-service
-      dockerfile: Dockerfile
-    # 또는 이미지 사용:
-    # image: ${DOCKER_USERNAME}/qr-service:latest
+    image: ${DOCKER_USERNAME}/keeping-qr-service:latest
     container_name: keeping-qr-service
     restart: unless-stopped
     depends_on:
@@ -164,9 +161,47 @@ services:
     networks:
       - keeping-network
 
+  # ==========================================
+  # Prometheus (observability 프로파일)
+  # 기동: docker compose -f docker-compose.msa.yml --profile observability up -d
+  # ==========================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: keeping-prometheus
+    restart: unless-stopped
+    profiles: ["observability"]
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - keeping-network
+
+  # ==========================================
+  # Grafana (observability 프로파일)
+  # ==========================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: keeping-grafana
+    restart: unless-stopped
+    profiles: ["observability"]
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - keeping-network
+
 volumes:
   mysql_data:
   redis_data:
+  prometheus_data:
+  grafana_data:
 
 networks:
   keeping-network:
