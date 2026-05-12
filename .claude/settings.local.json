@@ -1,0 +1,82 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(chmod +x C:/keeping/backend/.claude/hooks/check-env.sh C:/keeping/backend/.claude/hooks/smoke-build.sh)",
+      "Bash(xargs grep:*)",
+      "Bash(./gradlew compileJava --no-daemon)",
+      "Bash(./gradlew test:*)",
+      "Bash(find src/main/java -name \"*.java\" -exec grep -l \"//.*\\\\|/\\\\*\" {} \\\\;)",
+      "Bash(sed 's/.*['\\\\''\"]//g')",
+      "Bash(sed \"s/['\\\\''\\\\\"]*//g\")",
+      "Bash(sed \"s/.*['\\\\''\\\\\"]//\")",
+      "Bash(sed \"s/['\\\\''\\\\\"]*$//\")",
+      "Bash(grep -v \"^$\")",
+      "Bash(grep -r \"private.*=\" /c/keeping/backend/qr-service/src/main/java/com/ssafy/keeping/qr/acl/dto/*.java --include=\"*.java\" -n)",
+      "Bash(./gradlew compileJava compileTestJava -q)",
+      "Bash(find . -type f -name \"*.java\" -exec grep -l \"ErrorCode\\\\.\" {} \\\\;)",
+      "Bash(awk '{print $NF}')",
+      "Bash(ls -la /c/keeping/backend/*.md /c/keeping/backend/*.sql)",
+      "Bash(xargs wc:*)",
+      "Bash(grep -r '${__TRACKED_VAR__}' /c/keeping/backend '--include=*.java' '--include=*.yml')",
+      "Bash(awk '{print $1}')",
+      "Bash(sort wc:*)",
+      "Bash(./gradlew dependencies:*)",
+      "Bash(find /c/keeping/backend/monolith/src/main/java -type f -name \"*.java\" -exec wc -l {} \\\\;)",
+      "Bash(xargs -0 grep -l \"@Deprecated\")",
+      "Bash(wc -l /c/keeping/backend/qr-service/src/main/java/com/ssafy/keeping/qr/config/*)",
+      "Bash(find . -name '*.java' -type f -exec sh -c 'lines=$\\(wc -l < \"$1\"\\); if [ \"$lines\" -gt 10 ] && [ \"$lines\" -lt 20 ]; then echo \"$1: $lines lines\"; fi' _ '{}' ';')",
+      "Bash(find monolith/src/main/java/com/ssafy/keeping/domain -type f -name \"*Repository.java\" -exec wc -l {} \\\\;)",
+      "Bash(find . -type f -name '*.md' -exec sh -c 'lines=$\\(wc -l < \"$1\"\\); if [ \"$lines\" -lt 10 ]; then echo \"$1: $lines lines\"; fi' _ '{}' ';')",
+      "Bash(find monolith/src/main/java -type f -name \"*Service.java\" -exec grep -l \"public.*\\\\s{\\\\s*return\\\\s\\\\+[a-zA-Z_][a-zA-Z0-9_]*\\\\s*\\(\" {} \n;)",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(git push:*)",
+      "Bash(git commit:*)",
+      "Bash(./gradlew clean:*)",
+      "Bash(docker build:*)",
+      "Bash(docker push:*)",
+      "Bash(mv Push 01_push_no-load)",
+      "Bash(mv None 02_none_no-load)",
+      "Bash(mv Push_add 03_push_with-load)",
+      "Bash(mv None_add 04_none_with-load)",
+      "Bash(mv first_result 05_grafana_bg30_combined)",
+      "Bash(mv second_result 06_grafana_bg100_combined)",
+      "Bash(mv zipkin:*)",
+      "Bash(mv \"스크린샷 2026-04-17 072538.png\" \"01_normal_trace_list.png\")",
+      "Bash(mv \"스크린샷 2026-04-17 072645.png\" \"02_normal_approve_695ms.png\")",
+      "Bash(mv \"스크린샷 2026-04-17 082632.png\" \"03_timeout_approve_3209ms.png\")",
+      "Bash(mv \"스크린샷 2026-04-17 085433.png\" \"04_recovery_scheduler_list.png\")",
+      "Bash(mv \"스크린샷 2026-04-17 085659.png\" \"05_recovery_scheduler_detail.png\")",
+      "Bash(mv \"스크린샷 2026-04-17 091345.png\" \"06_timeout_detail_both_services.png\")",
+      "Bash(mv \"스크린샷 2026-04-17 091352.png\" \"07_timeout_list_5820ms.png\")",
+      "Bash(mv \"스크린샷 2026-04-17 092907.png\" \"08_recovery_both_services_139spans.png\")",
+      "Bash(mv \"스크린샷 2026-04-17 092957.png\" \"09_recovery_list_normal.png\")",
+      "Read(//mnt/c/keeping/backend/k6/performance-comparison/results/**)",
+      "Bash(git log:*)",
+      "Bash(iconv -f UTF-16LE -t UTF-8 \"k6/performance-comparison/results/01-push-idle.log\")",
+      "Bash(iconv -f UTF-16LE -t UTF-8 \"k6/performance-comparison/results/03-push-load-QR.log\")",
+      "Bash(iconv -f UTF-16LE -t UTF-8 \"k6/performance-comparison/results/02-none-idle.log\")",
+      "Bash(iconv -f UTF-16LE -t UTF-8 \"k6/performance-comparison/results/04-none-load-QR.log\")",
+      "Bash(./gradlew compileJava)",
+      "Bash(git reset:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/check-env.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/smoke-build.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
