@@ -11,8 +11,7 @@ import java.time.Clock;
 @EnableJpaAuditing
 @EnableJpaRepositories(basePackages = {
         "com.ssafy.keeping.qr.domain.intent.repository",
-        "com.ssafy.keeping.qr.domain.idempotency.repository",
-        "com.ssafy.keeping.qr.saga.repository"
+        "com.ssafy.keeping.qr.domain.idempotency.repository"
 })
 public class JpaConfig {
 

@@ -54,4 +54,9 @@ public interface PaymentIntentRepository extends JpaRepository<PaymentIntent, Lo
             @Param("now") LocalDateTime now,
             @Param("since") LocalDateTime since
     );
+
+    long countByStatus(PaymentStatus status);
+
+    @Query("SELECT MIN(pi.createdAt) FROM PaymentIntent pi WHERE pi.status = :status")
+    Optional<LocalDateTime> findOldestCreatedAtByStatus(@Param("status") PaymentStatus status);
 }

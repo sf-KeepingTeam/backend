@@ -46,11 +46,13 @@ internal:
 
 # 캐시 모드 및 워밍 설정
 cache:
-  # 캐시 모드: NONE / PULL / PUSH
-  mode: ${CACHE_MODE:PUSH}
+  # 캐시 모드: NONE / CACHE_ASIDE / WRITE_THROUGH
+  mode: ${CACHE_MODE:WRITE_THROUGH}
   warming:
     enabled: ${CACHE_WARMING_ENABLED:true}
 
+# NOTE: 아래 management / logging.pattern 블록은 monolith/src/main/resources/application.yml 와
+#       수동 동기화 대상. 한쪽만 수정하지 말 것. (독립 Gradle 프로젝트라 YAML 공유 불가)
 # Actuator + Tracing
 management:
   endpoints:

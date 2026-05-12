@@ -1,5 +1,6 @@
 package com.ssafy.keeping.qr.domain.intent.controller;
 
+import com.ssafy.keeping.qr.common.constants.HttpHeaderConstants;
 import com.ssafy.keeping.qr.common.response.ApiResponse;
 import com.ssafy.keeping.qr.domain.idempotency.model.IdempotentResult;
 import com.ssafy.keeping.qr.domain.intent.dto.ApproveRequest;
@@ -28,7 +29,7 @@ public class PaymentApprovalController {
     @PostMapping("/{intentId}/approve")
     public ResponseEntity<ApiResponse<PaymentIntentDetailResponse>> approve(
             @PathVariable("intentId") UUID intentId,
-            @RequestHeader("Idempotency-Key") String idemKey,
+            @RequestHeader(HttpHeaderConstants.IDEMPOTENCY_KEY) String idemKey,
             @AuthenticationPrincipal UserPrincipal principal,
             @Valid @RequestBody ApproveRequest body
     ) {

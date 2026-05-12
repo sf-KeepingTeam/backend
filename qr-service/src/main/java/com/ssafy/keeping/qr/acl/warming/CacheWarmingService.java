@@ -4,6 +4,7 @@ import com.ssafy.keeping.qr.acl.cache.MenuCacheRepository;
 import com.ssafy.keeping.qr.acl.cache.StoreCacheRepository;
 import com.ssafy.keeping.qr.acl.dto.MenuResponse;
 import com.ssafy.keeping.qr.acl.dto.StoreResponse;
+import com.ssafy.keeping.qr.common.constants.HttpHeaderConstants;
 import com.ssafy.keeping.qr.config.CacheModeConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,7 +26,7 @@ import java.util.List;
 /**
  * 캐시 워밍 서비스
  * 애플리케이션 시작 시 모놀리스에서 전체 Store/Menu 데이터를 가져와 캐시에 적재
- * PUSH 모드에서만 캐시 워밍 실행
+ * WRITE_THROUGH 모드에서만 캐시 워밍 실행
  */
 @Slf4j
 @Service
@@ -48,13 +49,13 @@ public class CacheWarmingService {
 
     /**
      * 애플리케이션 시작 시 캐시 워밍 실행
-     * PUSH 모드에서만 실행
+     * WRITE_THROUGH 모드에서만 실행
      */
     @Async
     @EventListener(ApplicationReadyEvent.class)
     public void warmCacheOnStartup() {
-        // PUSH 모드가 아니면 캐시 워밍 건너뜀
-        if (!cacheConfig.isPushEnabled()) {
+        // WRITE_THROUGH 모드가 아니면 캐시 워밍 건너뜀
+        if (!cacheConfig.isWriteThroughEnabled()) {
             log.info("캐시 워밍 건너뜀 - 캐시 모드: {}", cacheConfig.getMode());
             return;
         }
@@ -119,7 +120,7 @@ public class CacheWarmingService {
 
     private HttpHeaders createHeaders() {
         HttpHeaders headers = new HttpHeaders();
-        headers.set("X-Internal-Auth", internalAuthToken);
+        headers.set(HttpHeaderConstants.X_INTERNAL_AUTH, internalAuthToken);
         return headers;
     }
 }

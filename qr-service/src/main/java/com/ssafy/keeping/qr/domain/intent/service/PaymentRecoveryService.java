@@ -7,6 +7,7 @@ import com.ssafy.keeping.qr.acl.dto.RefundResponse;
 import com.ssafy.keeping.qr.domain.intent.constant.PaymentStatus;
 import com.ssafy.keeping.qr.domain.intent.model.PaymentIntent;
 import com.ssafy.keeping.qr.domain.intent.repository.PaymentIntentRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +33,9 @@ public class PaymentRecoveryService {
     private final PaymentIntentRepository paymentIntentRepository;
     private final WalletClient walletClient;
     private final TransactionTemplate transactionTemplate;
+    private final MeterRegistry meterRegistry;
+
+    private static final String RECOVERY_COUNTER = "payment_recovery_attempts_total";
 
     /** 복구 대상 존재 플래그 */
     private final AtomicBoolean hasRecoveryTarget = new AtomicBoolean(false);
@@ -133,8 +137,15 @@ public class PaymentRecoveryService {
         // Phase 1: 외부 API 호출 (트랜잭션 없음)
         RecoveryResult result = performExternalRecovery(intent, idempotencyKey);
 
-        // Phase 2: DB 저장 (짧은 트랜잭션)
-        persistRecoveryResult(intentId, result);
+        try {
+            // Phase 2: DB 저장 (짧은 트랜잭션)
+            persistRecoveryResult(intentId, result);
+            meterRegistry.counter(RECOVERY_COUNTER, "result", result.getKind()).increment();
+        } catch (RuntimeException e) {
+            // persistRecoveryResult 내부 재시도 throw 또는 Phase 2 자체 오류
+            meterRegistry.counter(RECOVERY_COUNTER, "result", "persist_failure").increment();
+            throw e;
+        }
     }
 
     /**
@@ -168,8 +179,13 @@ public class PaymentRecoveryService {
             log.info("결제 환불 완료: intentId={}, refundTxId={}",
                     intent.getIntentId(), refundResult.getRefundTransactionId());
             return RecoveryResult.refundSuccess("환불 완료 - txId: " + refundResult.getRefundTransactionId());
+        } else if (refundResult != null && refundResult.isPermanent()) {
+            log.error("환불 영구 실패 - 수동 확인 필요: intentId={}, message={}",
+                    intent.getIntentId(), refundResult.getMessage());
+            return RecoveryResult.refundPermanentlyFailed(
+                    "영구 실패(수동 확인): " + refundResult.getMessage());
         } else {
-            log.error("환불 실패: intentId={}, response={}", intent.getIntentId(), refundResult);
+            log.error("환불 일시 실패: intentId={}, response={}", intent.getIntentId(), refundResult);
             return RecoveryResult.refundFailed("환불 실패");
         }
     }
@@ -203,18 +219,23 @@ public class PaymentRecoveryService {
 
     /**
      * 복구 결과 DTO
+     * kind는 Prometheus Counter tag 용도
      */
-    private record RecoveryResult(boolean success, String note) {
+    private record RecoveryResult(boolean success, String note, String kind) {
         static RecoveryResult noPaymentFound(String note) {
-            return new RecoveryResult(true, note);
+            return new RecoveryResult(true, note, "no_payment");
         }
 
         static RecoveryResult refundSuccess(String note) {
-            return new RecoveryResult(true, note);
+            return new RecoveryResult(true, note, "refund_success");
         }
 
         static RecoveryResult refundFailed(String note) {
-            return new RecoveryResult(false, note);
+            return new RecoveryResult(false, note, "refund_transient_failure");
+        }
+
+        static RecoveryResult refundPermanentlyFailed(String note) {
+            return new RecoveryResult(true, note, "refund_permanent_failure");
         }
 
         boolean isSuccess() {
@@ -223,6 +244,10 @@ public class PaymentRecoveryService {
 
         String getNote() {
             return note;
+        }
+
+        String getKind() {
+            return kind;
         }
     }
 

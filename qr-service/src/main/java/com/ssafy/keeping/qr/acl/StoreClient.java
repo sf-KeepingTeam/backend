@@ -2,6 +2,7 @@ package com.ssafy.keeping.qr.acl;
 
 import com.ssafy.keeping.qr.acl.cache.StoreCacheRepository;
 import com.ssafy.keeping.qr.acl.dto.StoreResponse;
+import com.ssafy.keeping.qr.common.constants.HttpHeaderConstants;
 import com.ssafy.keeping.qr.common.exception.CustomException;
 import com.ssafy.keeping.qr.common.exception.ErrorCode;
 import com.ssafy.keeping.qr.config.CacheModeConfig;
@@ -25,8 +26,8 @@ import java.util.Optional;
  *
  * 캐시 모드별 동작:
  * - NONE: 캐시 미사용, 항상 모놀리스 직접 호출
- * - PULL: Cache-Aside (캐시 미스 시 조회 후 저장)
- * - PUSH: Webhook Push + Cache-Aside Fallback
+ * - CACHE_ASIDE: 캐시 미스 시 모놀리스 조회 후 저장 (Lazy Loading)
+ * - WRITE_THROUGH: Cache Warming + Webhook 갱신, 미스 시 Cache-Aside Fallback
  */
 @Slf4j
 @Component
@@ -46,7 +47,7 @@ public class StoreClient {
     /**
      * 매장 정보 조회 (캐시 모드별 분기)
      * - NONE: 캐시 건너뛰고 직접 호출
-     * - PULL/PUSH: Redis 캐시 우선 조회, 미스 시 모놀리스 Fallback
+     * - CACHE_ASIDE / WRITE_THROUGH: Redis 캐시 우선 조회, 미스 시 모놀리스 Fallback
      */
     public Optional<StoreResponse> getStore(Long storeId) {
         // NONE 모드: 캐시 건너뛰고 직접 호출
@@ -55,7 +56,7 @@ public class StoreClient {
             return fetchFromMonolithDirect(storeId);
         }
 
-        // PULL/PUSH 모드: 캐시 우선 조회
+        // CACHE_ASIDE / WRITE_THROUGH 모드: 캐시 우선 조회
         Optional<StoreResponse> cached = cacheRepository.findById(storeId);
         if (cached.isPresent()) {
             return cached;
@@ -118,7 +119,7 @@ public class StoreClient {
 
     private HttpHeaders createHeaders() {
         HttpHeaders headers = new HttpHeaders();
-        headers.set("X-Internal-Auth", internalAuthToken);
+        headers.set(HttpHeaderConstants.X_INTERNAL_AUTH, internalAuthToken);
         return headers;
     }
 }

@@ -3,6 +3,7 @@ package com.ssafy.keeping.qr.acl;
 import com.ssafy.keeping.qr.acl.dto.CustomerResponse;
 import com.ssafy.keeping.qr.acl.dto.PinVerifyRequest;
 import com.ssafy.keeping.qr.acl.dto.PinVerifyResponse;
+import com.ssafy.keeping.qr.common.constants.HttpHeaderConstants;
 import com.ssafy.keeping.qr.common.exception.CustomException;
 import com.ssafy.keeping.qr.common.exception.ErrorCode;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
@@ -91,7 +92,7 @@ public class CustomerClient {
 
     private HttpHeaders createHeaders() {
         HttpHeaders headers = new HttpHeaders();
-        headers.set("X-Internal-Auth", internalAuthToken);
+        headers.set(HttpHeaderConstants.X_INTERNAL_AUTH, internalAuthToken);
         return headers;
     }
 }

@@ -22,16 +22,16 @@ public class CacheModeConfig {
     /**
      * 캐시 모드
      * - NONE: 캐시 미사용, 항상 모놀리스 호출
-     * - PULL: Cache-Aside (캐시 미스 시 조회 후 저장)
-     * - PUSH: Webhook Push + Cache-Aside Fallback (현재 구현)
+     * - CACHE_ASIDE: 캐시 미스 시 모놀리스에서 조회 후 저장 (Lazy Loading)
+     * - WRITE_THROUGH: 서버 시작 시 전량 Cache Warming + 변경 시 Webhook으로 즉시 갱신 (현재 운영 모드)
      */
     public enum Mode {
-        NONE,  // 캐시 미사용, 항상 모놀리스 호출
-        PULL,  // Cache-Aside (캐시 미스 시 조회 후 저장)
-        PUSH   // Webhook Push + Cache-Aside Fallback (현재 구현)
+        NONE,          // 캐시 미사용, 항상 모놀리스 호출
+        CACHE_ASIDE,   // 캐시 미스 시 모놀리스 조회 후 저장 (Lazy Loading)
+        WRITE_THROUGH  // Cache Warming + Webhook 기반 즉시 갱신
     }
 
-    private Mode mode = Mode.PUSH;
+    private Mode mode = Mode.WRITE_THROUGH;
 
     @PostConstruct
     public void logCacheMode() {
@@ -41,16 +41,16 @@ public class CacheModeConfig {
     }
 
     /**
-     * 캐시 사용 여부 (PULL 또는 PUSH 모드)
+     * 캐시 사용 여부 (CACHE_ASIDE 또는 WRITE_THROUGH 모드)
      */
     public boolean isCacheEnabled() {
         return mode != Mode.NONE;
     }
 
     /**
-     * PUSH 모드 여부 (Webhook Push + Cache Warming)
+     * WRITE_THROUGH 모드 여부 (Cache Warming + Webhook 즉시 갱신)
      */
-    public boolean isPushEnabled() {
-        return mode == Mode.PUSH;
+    public boolean isWriteThroughEnabled() {
+        return mode == Mode.WRITE_THROUGH;
     }
 }

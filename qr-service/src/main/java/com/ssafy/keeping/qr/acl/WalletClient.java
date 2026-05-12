@@ -6,6 +6,7 @@ import com.ssafy.keeping.qr.acl.dto.PaymentCheckResponse;
 import com.ssafy.keeping.qr.acl.dto.RefundRequest;
 import com.ssafy.keeping.qr.acl.dto.RefundResponse;
 import com.ssafy.keeping.qr.acl.dto.WalletBalanceResponse;
+import com.ssafy.keeping.qr.common.constants.HttpHeaderConstants;
 import com.ssafy.keeping.qr.common.exception.CustomException;
 import com.ssafy.keeping.qr.common.exception.ErrorCode;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
@@ -18,6 +19,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
@@ -97,7 +99,7 @@ public class WalletClient {
 
         HttpHeaders headers = createHeaders();
         headers.set("Content-Type", "application/json");
-        headers.set("Idempotency-Key", idempotencyKey);
+        headers.set(HttpHeaderConstants.IDEMPOTENCY_KEY, idempotencyKey);
 
         ResponseEntity<FundsResponse> response = writeRestTemplate.exchange(
                 url,
@@ -187,7 +189,7 @@ public class WalletClient {
 
         HttpHeaders headers = createHeaders();
         headers.set("Content-Type", "application/json");
-        headers.set("Idempotency-Key", idempotencyKey);
+        headers.set(HttpHeaderConstants.IDEMPOTENCY_KEY, idempotencyKey);
 
         ResponseEntity<RefundResponse> response = writeRestTemplate.exchange(
                 url,
@@ -210,7 +212,7 @@ public class WalletClient {
 
     private HttpHeaders createHeaders() {
         HttpHeaders headers = new HttpHeaders();
-        headers.set("X-Internal-Auth", internalAuthToken);
+        headers.set(HttpHeaderConstants.X_INTERNAL_AUTH, internalAuthToken);
         return headers;
     }
 
@@ -258,19 +260,27 @@ public class WalletClient {
 
         HttpHeaders headers = createHeaders();
         headers.set("Content-Type", "application/json");
-        headers.set("Idempotency-Key", idempotencyKey);
+        headers.set(HttpHeaderConstants.IDEMPOTENCY_KEY, idempotencyKey);
 
-        ResponseEntity<RefundResponse> response = recoveryRestTemplate.exchange(
-                url,
-                HttpMethod.POST,
-                new HttpEntity<>(request, headers),
-                RefundResponse.class
-        );
+        try {
+            ResponseEntity<RefundResponse> response = recoveryRestTemplate.exchange(
+                    url,
+                    HttpMethod.POST,
+                    new HttpEntity<>(request, headers),
+                    RefundResponse.class
+            );
 
-        log.info("환불 처리 완료 (복구): walletId={}, storeId={}, amount={}, idempotencyKey={}",
-                request.getWalletId(), request.getStoreId(), request.getAmount(), idempotencyKey);
+            log.info("환불 처리 완료 (복구): walletId={}, storeId={}, amount={}, idempotencyKey={}",
+                    request.getWalletId(), request.getStoreId(), request.getAmount(), idempotencyKey);
 
-        return response.getBody();
+            return response.getBody();
+        } catch (HttpClientErrorException e) {
+            log.error("환불 4xx 수신 (영구 실패): walletId={}, status={}, body={}",
+                    request.getWalletId(), e.getStatusCode(), e.getResponseBodyAsString());
+            return RefundResponse.permanentFailed(
+                    e.getStatusCode().value(),
+                    e.getResponseBodyAsString());
+        }
     }
 
     private RefundResponse refundForRecoveryFallback(RefundRequest request, String idempotencyKey, Throwable t) {

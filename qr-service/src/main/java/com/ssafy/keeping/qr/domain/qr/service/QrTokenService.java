@@ -77,13 +77,6 @@ public class QrTokenService {
     }
 
     /**
-     * QR 토큰 조회 (Optional)
-     */
-    public Optional<QrToken> findToken(String tokenId) {
-        return qrTokenRepository.findByTokenId(tokenId);
-    }
-
-    /**
      * QR 토큰 삭제 (결제 완료 후)
      */
     public void deleteToken(String tokenId) {

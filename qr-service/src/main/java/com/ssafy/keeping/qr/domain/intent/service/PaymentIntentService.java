@@ -338,6 +338,11 @@ public class PaymentIntentService {
         List<PaymentIntentItem> intentItems = itemRepository.findByIntent_IntentId(intent.getIntentId());
         FundsService.FundsResult funds = fundsService.capture(intent, intentItems);
 
+        if (funds.isUncertain()) {
+            log.warn("자금 캡처 UNCERTAIN - 복구 스케줄러가 처리 예정: intentId={}", intent.getIntentId());
+            throw new CustomException(ErrorCode.SERVICE_TIMEOUT);
+        }
+
         if (!funds.isSufficient()) {
             String errorCode = funds.getErrorCode();
             if ("PAYMENT_IN_PROGRESS".equals(errorCode)) {

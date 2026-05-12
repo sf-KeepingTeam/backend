@@ -4,6 +4,7 @@ import com.ssafy.keeping.qr.acl.cache.MenuCacheRepository;
 import com.ssafy.keeping.qr.acl.cache.StoreCacheRepository;
 import com.ssafy.keeping.qr.acl.dto.MenuResponse;
 import com.ssafy.keeping.qr.acl.dto.StoreResponse;
+import com.ssafy.keeping.qr.common.constants.HttpHeaderConstants;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,7 +35,7 @@ public class CacheWebhookController {
     @PostMapping("/stores/{storeId}")
     public ResponseEntity<Void> updateStoreCache(
             @PathVariable Long storeId,
-            @RequestHeader(value = "X-Internal-Auth", required = false) String authToken,
+            @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken,
             @RequestBody(required = false) StoreResponse store
     ) {
         validateInternalAuth(authToken);
@@ -58,7 +59,7 @@ public class CacheWebhookController {
     @PostMapping("/menus/{menuId}")
     public ResponseEntity<Void> updateMenuCache(
             @PathVariable Long menuId,
-            @RequestHeader(value = "X-Internal-Auth", required = false) String authToken,
+            @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken,
             @RequestBody(required = false) MenuResponse menu
     ) {
         validateInternalAuth(authToken);

@@ -31,6 +31,7 @@ public class FundsService {
     private final WalletClient walletClient;
     private final PaymentRecoveryService paymentRecoveryService;
     private final PaymentIntentRepository paymentIntentRepository;
+    private final IntentStatusUpdater intentStatusUpdater;
 
     /**
      * 자금 캡처 (잔액 차감 + 거래 내역 생성)
@@ -103,10 +104,8 @@ public class FundsService {
      */
     private void markIntentUncertain(PaymentIntent intent, String reason) {
         try {
-            intent.setStatus(PaymentStatus.UNCERTAIN);
-            paymentIntentRepository.save(intent);
+            intentStatusUpdater.markUncertain(intent.getIntentId(), reason);
             paymentRecoveryService.markRecoveryNeeded();
-            log.info("Intent UNCERTAIN 상태로 변경: intentId={}, reason={}", intent.getIntentId(), reason);
         } catch (Exception e) {
             log.error("Intent UNCERTAIN 상태 변경 실패: intentId={}, error={}", intent.getIntentId(), e.getMessage());
         }

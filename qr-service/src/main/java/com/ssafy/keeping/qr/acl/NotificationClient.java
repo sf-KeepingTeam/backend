@@ -1,6 +1,7 @@
 package com.ssafy.keeping.qr.acl;
 
 import com.ssafy.keeping.qr.acl.dto.NotificationRequest;
+import com.ssafy.keeping.qr.common.constants.HttpHeaderConstants;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import lombok.RequiredArgsConstructor;
@@ -84,7 +85,7 @@ public class NotificationClient {
 
     private HttpHeaders createHeaders() {
         HttpHeaders headers = new HttpHeaders();
-        headers.set("X-Internal-Auth", internalAuthToken);
+        headers.set(HttpHeaderConstants.X_INTERNAL_AUTH, internalAuthToken);
         return headers;
     }
 }

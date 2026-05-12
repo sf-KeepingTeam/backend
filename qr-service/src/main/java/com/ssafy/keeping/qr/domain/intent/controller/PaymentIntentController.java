@@ -1,5 +1,6 @@
 package com.ssafy.keeping.qr.domain.intent.controller;
 
+import com.ssafy.keeping.qr.common.constants.HttpHeaderConstants;
 import com.ssafy.keeping.qr.common.response.ApiResponse;
 import com.ssafy.keeping.qr.domain.idempotency.model.IdempotentResult;
 import com.ssafy.keeping.qr.domain.intent.dto.PaymentInitiateRequest;
@@ -32,7 +33,7 @@ public class PaymentIntentController {
     @PostMapping("/cpqr/{sessionToken}/initiate")
     public ResponseEntity<ApiResponse<PaymentIntentDetailResponse>> initiate(
             @PathVariable String sessionToken,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKeyHeader,
+            @RequestHeader(value = HttpHeaderConstants.IDEMPOTENCY_KEY, required = false) String idempotencyKeyHeader,
             @AuthenticationPrincipal UserPrincipal principal,
             @Valid @RequestBody PaymentInitiateRequest body
     ) {

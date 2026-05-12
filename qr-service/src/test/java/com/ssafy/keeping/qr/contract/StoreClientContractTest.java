@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 이 테스트의 Stub 정의는 Monolith의 Contract와 동일해야 합니다.
  * Monolith가 Contract를 변경하면 이 테스트의 Stub도 함께 변경해야 합니다.
  *
- * Contract 파일 위치: backend/src/test/resources/contracts/internal/shouldReturnStoreById.groovy
+ * Contract 파일 위치: backend/monolith/src/test/resources/contracts/internal/shouldReturnStoreById.groovy
  *
  * [계약 위반 감지 흐름]
  * 1. Monolith가 API 응답 변경
@@ -55,7 +55,7 @@ class StoreClientContractTest {
                 .readTimeout(Duration.ofSeconds(5))
                 .build();
 
-        storeClient = new StoreClient(restTemplate);
+        storeClient = new StoreClient(restTemplate, null, null);
         ReflectionTestUtils.setField(storeClient, "monolithUrl", "http://localhost:18080");
         ReflectionTestUtils.setField(storeClient, "internalAuthToken", "internal-service-token-12345");
     }
