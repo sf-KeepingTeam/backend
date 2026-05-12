@@ -13,11 +13,15 @@ FROM eclipse-temurin:21-jre
 # 작업 디렉토리 설정
 WORKDIR /app
 
+# HEALTHCHECK에 필요한 curl 설치 (temurin:21-jre 기본 이미지에 없을 수 있음)
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 # JAR 파일 복사
 COPY build/libs/*.jar app.jar
 
 # 환경변수 기본값
-ENV SPRING_PROFILES_ACTIVE=prod,loadtest
+ENV SPRING_PROFILES_ACTIVE=prod
 ENV JAVA_OPTS="-Xms512m -Xmx1536m"
 ENV TZ=Asia/Seoul
 
