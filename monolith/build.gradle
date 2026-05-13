@@ -42,7 +42,6 @@ dependencies {
 	implementation 'org.apache.httpcomponents.client5:httpclient5'
 	implementation 'com.github.f4b6a3:uuid-creator:5.3.6'
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.7.0'
-	implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
 
 	// Spring Retry (Webhook 재시도 등)
 	implementation 'org.springframework.retry:spring-retry'

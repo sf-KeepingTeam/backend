@@ -1,7 +1,6 @@
 package com.ssafy.keeping.domain.auth.security.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.ssafy.keeping.domain.auth.handler.OAuth2SuccessHandler;
 import com.ssafy.keeping.domain.auth.security.JwtAccessDeniedHandler;
 import com.ssafy.keeping.domain.auth.security.filter.JwtAuthenticationFilter;
 import com.ssafy.keeping.domain.auth.security.filter.NoStoreAuthResponseFilter;
@@ -47,8 +46,6 @@ public class SecurityConfig {
             "/signup/**",
 
             // todo: 아래 경로들이 인증이 필요 없는 부분인지 확인하기
-            "/login/**",
-            "/oauth2/**",
             "/error",
             "/actuator/health",
             "/swagger-ui/**",
@@ -101,7 +98,6 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(
             HttpSecurity http,
-            OAuth2SuccessHandler successHandler,
             JwtAuthenticationFilter jwtFilter,
             NoStoreAuthResponseFilter noStoreFilter
     ) throws Exception {
@@ -131,7 +127,6 @@ public class SecurityConfig {
 
                         .anyRequest().authenticated() // 위에서 따로 허용해주지 않은 나머지 모든 요청은 “인증 필요”
                 )
-                .oauth2Login(oauth -> oauth.successHandler(successHandler))
                 .addFilterBefore(noStoreFilter, SecurityContextHolderFilter.class)
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 

@@ -1,7 +1,6 @@
 package com.ssafy.keeping.domain.auth.security.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.ssafy.keeping.domain.auth.handler.OAuth2SuccessHandler;
 import com.ssafy.keeping.domain.auth.security.JwtAccessDeniedHandler;
 import com.ssafy.keeping.domain.auth.security.JwtAuthenticationEntryPoint;
 import com.ssafy.keeping.domain.auth.security.filter.JwtAuthenticationFilter;
@@ -77,7 +76,6 @@ public class SecurityConfigPerf {
     @Bean
     public SecurityFilterChain filterChain(
             HttpSecurity http,
-            OAuth2SuccessHandler successHandler,
             JwtAuthenticationFilter jwtFilter,
             NoStoreAuthResponseFilter noStoreFilter,
             TestHeaderAuthenticationFilter testHeaderFilter
@@ -106,7 +104,6 @@ public class SecurityConfigPerf {
 
                         .anyRequest().authenticated()
                 )
-                .oauth2Login(oauth -> oauth.successHandler(successHandler))
                 .addFilterBefore(noStoreFilter, SecurityContextHolderFilter.class)
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(testHeaderFilter, JwtAuthenticationFilter.class);
