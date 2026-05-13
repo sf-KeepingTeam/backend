@@ -6,7 +6,6 @@ import com.ssafy.keeping.domain.internal.service.InternalPaymentService;
 import com.ssafy.keeping.global.constants.HttpHeaderConstants;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,9 +21,6 @@ public class InternalPaymentController {
 
     private final InternalPaymentService internalPaymentService;
     private final InternalAuthValidator internalAuthValidator;
-
-    @Value("${internal.auth-token:internal-service-token-12345}")
-    private String internalAuthToken;
 
     /**
      * 결제 상태 확인 - 멱등성 키로 기존 결제 존재 여부 확인

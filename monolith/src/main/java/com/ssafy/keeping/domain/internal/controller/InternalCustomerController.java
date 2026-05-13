@@ -12,7 +12,6 @@ import com.ssafy.keeping.global.exception.CustomException;
 import com.ssafy.keeping.global.exception.constants.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,9 +27,6 @@ public class InternalCustomerController {
     private final CustomerRepository customerRepository;
     private final InternalAuthValidator internalAuthValidator;
     private final PinAuthService pinAuthService;
-
-    @Value("${internal.auth-token:internal-service-token-12345}")
-    private String internalAuthToken;
 
     /**
      * 고객 정보 조회
