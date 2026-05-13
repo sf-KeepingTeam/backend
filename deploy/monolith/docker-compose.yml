@@ -1,22 +1,21 @@
 version: '3.8'
 
 services:
-  qr-service:
-    image: ${DOCKER_USERNAME}/keeping-qr-service:latest
-    container_name: keeping-qr-service
+  monolith:
+    image: ${DOCKER_USERNAME}/keeping-monolith:latest
+    container_name: keeping-monolith
     ports:
-      - "8081:8081"
+      - "8080:8080"
     environment:
-      - MONOLITH_URL=http://${MONOLITH_HOST}:8080
-      - DB_URL=jdbc:mysql://mysql:3306/payment_service?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true
-      - DB_USERNAME=root
-      - DB_PASSWORD=${MYSQL_ROOT_PASSWORD}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/ssafy_fintech_db?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
       - JWT_SECRET=${JWT_SECRET}
       - INTERNAL_AUTH_TOKEN=${INTERNAL_AUTH_TOKEN}
-      - LOADTEST_BACKDOOR_ENABLED=${LOADTEST_BACKDOOR_ENABLED:-false}
-      - HIKARI_MAX_POOL_SIZE=15
+      - FE_BASE_URL=${FE_BASE_URL:-http://localhost:3030}
     depends_on:
       mysql:
         condition: service_healthy
@@ -24,7 +23,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -34,12 +33,12 @@ services:
 
   mysql:
     image: mysql:8.0
-    container_name: qr-mysql
+    container_name: keeping-mysql
     volumes:
       - mysql_data:/var/lib/mysql
     environment:
       - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
-      - MYSQL_DATABASE=payment_service
+      - MYSQL_DATABASE=ssafy_fintech_db
       - MYSQL_CHARACTER_SET_SERVER=utf8mb4
       - MYSQL_COLLATION_SERVER=utf8mb4_unicode_ci
     ports:
@@ -56,8 +55,8 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: qr-redis
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    container_name: keeping-redis
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
     ports:

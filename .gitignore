@@ -10,7 +10,7 @@ docs/**/*.md
 **/gradle.properties
 # .claude 로컬 전용 파일만 제외 (프로젝트 설정은 커밋)
 .claude/settings.local.json
-docker-compose.yml
+/docker-compose.yml
 
 ### STS ###
 .apt_generated
