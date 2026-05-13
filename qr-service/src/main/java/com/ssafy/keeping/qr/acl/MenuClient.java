@@ -2,7 +2,6 @@ package com.ssafy.keeping.qr.acl;
 
 import com.ssafy.keeping.qr.acl.cache.MenuCacheRepository;
 import com.ssafy.keeping.qr.acl.dto.MenuResponse;
-import com.ssafy.keeping.qr.common.constants.HttpHeaderConstants;
 import com.ssafy.keeping.qr.common.exception.CustomException;
 import com.ssafy.keeping.qr.common.exception.ErrorCode;
 import com.ssafy.keeping.qr.config.CacheModeConfig;
@@ -41,12 +40,10 @@ public class MenuClient {
     private final RestTemplate restTemplate;
     private final MenuCacheRepository cacheRepository;
     private final CacheModeConfig cacheConfig;
+    private final InternalHeaderProvider internalHeaderProvider;
 
     @Value("${monolith.url}")
     private String monolithUrl;
-
-    @Value("${internal.auth-token}")
-    private String internalAuthToken;
 
     /**
      * 메뉴 목록 일괄 조회 (캐시 모드별 분기)
@@ -100,7 +97,7 @@ public class MenuClient {
         log.debug("Menu 일괄 조회 - NONE 모드, 직접 호출: menuIds={}", menuIds);
         String url = monolithUrl + "/internal/menus/batch";
 
-        HttpHeaders headers = createHeaders();
+        HttpHeaders headers = internalHeaderProvider.createHeaders();
         headers.set("Content-Type", "application/json");
 
         BatchMenuRequest body = new BatchMenuRequest(menuIds);
@@ -144,7 +141,7 @@ public class MenuClient {
     @Retry(name = "menuClient", fallbackMethod = "fetchSingleFromMonolithFallback")
     public Optional<MenuResponse> fetchSingleFromMonolithDirect(Long menuId) {
         String url = monolithUrl + "/internal/menus/" + menuId;
-        HttpHeaders headers = createHeaders();
+        HttpHeaders headers = internalHeaderProvider.createHeaders();
 
         ResponseEntity<MenuResponse> response = restTemplate.exchange(
                 url,
@@ -165,7 +162,7 @@ public class MenuClient {
         log.debug("Menu 일괄 조회 - 모놀리스 호출: menuIds={}", menuIds);
         String url = monolithUrl + "/internal/menus/batch";
 
-        HttpHeaders headers = createHeaders();
+        HttpHeaders headers = internalHeaderProvider.createHeaders();
         headers.set("Content-Type", "application/json");
 
         BatchMenuRequest body = new BatchMenuRequest(menuIds);
@@ -195,7 +192,7 @@ public class MenuClient {
         log.debug("Menu 단일 조회 - 모놀리스 호출: menuId={}", menuId);
         String url = monolithUrl + "/internal/menus/" + menuId;
 
-        HttpHeaders headers = createHeaders();
+        HttpHeaders headers = internalHeaderProvider.createHeaders();
 
         ResponseEntity<MenuResponse> response = restTemplate.exchange(
                 url,
@@ -223,11 +220,6 @@ public class MenuClient {
         throw new CustomException(ErrorCode.MENU_SERVICE_UNAVAILABLE, t);
     }
 
-    private HttpHeaders createHeaders() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.set(HttpHeaderConstants.X_INTERNAL_AUTH, internalAuthToken);
-        return headers;
-    }
 
     private record BatchMenuRequest(List<Long> menuIds) {}
 }

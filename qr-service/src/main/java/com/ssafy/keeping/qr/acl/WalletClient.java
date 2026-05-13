@@ -40,20 +40,20 @@ public class WalletClient {
     private final RestTemplate restTemplate;
     private final RestTemplate writeRestTemplate;
     private final RestTemplate recoveryRestTemplate;
+    private final InternalHeaderProvider internalHeaderProvider;
 
     @Value("${monolith.url}")
     private String monolithUrl;
 
-    @Value("${internal.auth-token}")
-    private String internalAuthToken;
-
     public WalletClient(
             RestTemplate restTemplate,
             @Qualifier("writeRestTemplate") RestTemplate writeRestTemplate,
-            @Qualifier("recoveryRestTemplate") RestTemplate recoveryRestTemplate) {
+            @Qualifier("recoveryRestTemplate") RestTemplate recoveryRestTemplate,
+            InternalHeaderProvider internalHeaderProvider) {
         this.restTemplate = restTemplate;
         this.writeRestTemplate = writeRestTemplate;
         this.recoveryRestTemplate = recoveryRestTemplate;
+        this.internalHeaderProvider = internalHeaderProvider;
     }
 
     /**
@@ -64,7 +64,7 @@ public class WalletClient {
     public BigDecimal getBalance(Long walletId, Long storeId) {
         String url = monolithUrl + "/internal/wallets/" + walletId + "/stores/" + storeId + "/balance";
 
-        HttpHeaders headers = createHeaders();
+        HttpHeaders headers = internalHeaderProvider.createHeaders();
 
         ResponseEntity<WalletBalanceResponse> response = restTemplate.exchange(
                 url,
@@ -97,7 +97,7 @@ public class WalletClient {
         String url = monolithUrl + "/internal/wallets/" + request.getWalletId()
                 + "/stores/" + request.getStoreId() + "/capture";
 
-        HttpHeaders headers = createHeaders();
+        HttpHeaders headers = internalHeaderProvider.createHeaders();
         headers.set("Content-Type", "application/json");
         headers.set(HttpHeaderConstants.IDEMPOTENCY_KEY, idempotencyKey);
 
@@ -130,7 +130,7 @@ public class WalletClient {
     public void restore(Long walletId, Long storeId, Long amount) {
         String url = monolithUrl + "/internal/wallets/" + walletId + "/stores/" + storeId + "/restore";
 
-        HttpHeaders headers = createHeaders();
+        HttpHeaders headers = internalHeaderProvider.createHeaders();
         headers.set("Content-Type", "application/json");
 
         RestoreRequest body = new RestoreRequest(amount);
@@ -159,7 +159,7 @@ public class WalletClient {
     public PaymentCheckResponse checkPayment(String idempotencyKey) {
         String url = monolithUrl + "/internal/payments/check?idempotencyKey=" + idempotencyKey;
 
-        HttpHeaders headers = createHeaders();
+        HttpHeaders headers = internalHeaderProvider.createHeaders();
 
         ResponseEntity<PaymentCheckResponse> response = restTemplate.exchange(
                 url,
@@ -187,7 +187,7 @@ public class WalletClient {
     public RefundResponse refund(RefundRequest request, String idempotencyKey) {
         String url = monolithUrl + "/internal/wallets/" + request.getWalletId() + "/refund";
 
-        HttpHeaders headers = createHeaders();
+        HttpHeaders headers = internalHeaderProvider.createHeaders();
         headers.set("Content-Type", "application/json");
         headers.set(HttpHeaderConstants.IDEMPOTENCY_KEY, idempotencyKey);
 
@@ -210,11 +210,6 @@ public class WalletClient {
         throw new CustomException(ErrorCode.WALLET_SERVICE_UNAVAILABLE, t);
     }
 
-    private HttpHeaders createHeaders() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.set(HttpHeaderConstants.X_INTERNAL_AUTH, internalAuthToken);
-        return headers;
-    }
 
     // ========== 복구용 메서드 (recoveryRestTemplate 사용) ==========
 
@@ -229,7 +224,7 @@ public class WalletClient {
     public PaymentCheckResponse checkPaymentForRecovery(String idempotencyKey) {
         String url = monolithUrl + "/internal/payments/check?idempotencyKey=" + idempotencyKey;
 
-        HttpHeaders headers = createHeaders();
+        HttpHeaders headers = internalHeaderProvider.createHeaders();
 
         ResponseEntity<PaymentCheckResponse> response = recoveryRestTemplate.exchange(
                 url,
@@ -258,7 +253,7 @@ public class WalletClient {
     public RefundResponse refundForRecovery(RefundRequest request, String idempotencyKey) {
         String url = monolithUrl + "/internal/wallets/" + request.getWalletId() + "/refund";
 
-        HttpHeaders headers = createHeaders();
+        HttpHeaders headers = internalHeaderProvider.createHeaders();
         headers.set("Content-Type", "application/json");
         headers.set(HttpHeaderConstants.IDEMPOTENCY_KEY, idempotencyKey);
 

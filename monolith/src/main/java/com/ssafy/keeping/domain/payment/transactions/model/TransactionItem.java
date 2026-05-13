@@ -1,7 +1,6 @@
 package com.ssafy.keeping.domain.payment.transactions.model;
 
 import com.ssafy.keeping.domain.menu.model.Menu;
-import com.ssafy.keeping.domain.store.model.Store;
 import com.ssafy.keeping.global.exception.CustomException;
 import com.ssafy.keeping.global.exception.constants.ErrorCode;
 import jakarta.persistence.*;

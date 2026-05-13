@@ -1,7 +1,7 @@
 package com.ssafy.keeping.domain.internal.controller;
 
 import com.ssafy.keeping.domain.internal.dto.StoreResponse;
-import com.ssafy.keeping.domain.internal.exception.InternalApiAuthException;
+import com.ssafy.keeping.domain.internal.service.InternalAuthValidator;
 import com.ssafy.keeping.domain.store.constant.StoreStatus;
 import com.ssafy.keeping.domain.store.model.Store;
 import com.ssafy.keeping.domain.store.repository.StoreRepository;
@@ -26,6 +26,7 @@ import java.util.List;
 public class InternalStoreController {
 
     private final StoreRepository storeRepository;
+    private final InternalAuthValidator internalAuthValidator;
 
     @Value("${internal.auth-token:internal-service-token-12345}")
     private String internalAuthToken;
@@ -38,7 +39,7 @@ public class InternalStoreController {
             @PathVariable Long storeId,
             @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
     ) {
-        validateInternalAuth(authToken);
+        internalAuthValidator.validate(authToken);
 
         Store store = storeRepository.findById(storeId)
                 .orElseThrow(() -> new CustomException(ErrorCode.STORE_NOT_FOUND));
@@ -53,7 +54,7 @@ public class InternalStoreController {
     public ResponseEntity<List<StoreResponse>> getAllStores(
             @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
     ) {
-        validateInternalAuth(authToken);
+        internalAuthValidator.validate(authToken);
 
         List<Store> stores = storeRepository.findAllActiveStores(StoreStatus.ACTIVE);
         List<StoreResponse> response = stores.stream()
@@ -62,12 +63,5 @@ public class InternalStoreController {
 
         log.info("전체 Store 조회 (Cache Warming): count={}", response.size());
         return ResponseEntity.ok(response);
-    }
-
-    private void validateInternalAuth(String authToken) {
-        if (!internalAuthToken.equals(authToken)) {
-            log.warn("Internal API 인증 실패: 잘못된 토큰");
-            throw new InternalApiAuthException("Internal API 인증 실패");
-        }
     }
 }

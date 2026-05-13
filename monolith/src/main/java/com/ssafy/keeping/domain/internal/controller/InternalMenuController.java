@@ -2,7 +2,7 @@ package com.ssafy.keeping.domain.internal.controller;
 
 import com.ssafy.keeping.domain.internal.dto.BatchMenuRequest;
 import com.ssafy.keeping.domain.internal.dto.MenuResponse;
-import com.ssafy.keeping.domain.internal.exception.InternalApiAuthException;
+import com.ssafy.keeping.domain.internal.service.InternalAuthValidator;
 import com.ssafy.keeping.domain.menu.model.Menu;
 import com.ssafy.keeping.domain.menu.repository.MenuRepository;
 import com.ssafy.keeping.global.constants.HttpHeaderConstants;
@@ -25,6 +25,7 @@ import java.util.stream.Collectors;
 public class InternalMenuController {
 
     private final MenuRepository menuRepository;
+    private final InternalAuthValidator internalAuthValidator;
 
     @Value("${internal.auth-token:internal-service-token-12345}")
     private String internalAuthToken;
@@ -37,7 +38,7 @@ public class InternalMenuController {
             @RequestBody BatchMenuRequest request,
             @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
     ) {
-        validateInternalAuth(authToken);
+        internalAuthValidator.validate(authToken);
 
         List<Menu> menus = menuRepository.findAllById(request.getMenuIds());
 
@@ -56,7 +57,7 @@ public class InternalMenuController {
             @PathVariable Long menuId,
             @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
     ) {
-        validateInternalAuth(authToken);
+        internalAuthValidator.validate(authToken);
 
         Menu menu = menuRepository.findById(menuId)
                 .orElse(null);
@@ -75,7 +76,7 @@ public class InternalMenuController {
     public ResponseEntity<List<MenuResponse>> getAllMenus(
             @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
     ) {
-        validateInternalAuth(authToken);
+        internalAuthValidator.validate(authToken);
 
         List<Menu> menus = menuRepository.findAllActiveMenus();
         List<MenuResponse> response = menus.stream()
@@ -84,12 +85,5 @@ public class InternalMenuController {
 
         log.info("전체 Menu 조회 (Cache Warming): count={}", response.size());
         return ResponseEntity.ok(response);
-    }
-
-    private void validateInternalAuth(String authToken) {
-        if (!internalAuthToken.equals(authToken)) {
-            log.warn("Internal API 인증 실패: 잘못된 토큰");
-            throw new InternalApiAuthException("Internal API 인증 실패");
-        }
     }
 }

@@ -1,7 +1,6 @@
 package com.ssafy.keeping.qr.acl;
 
 import com.ssafy.keeping.qr.acl.dto.NotificationRequest;
-import com.ssafy.keeping.qr.common.constants.HttpHeaderConstants;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import lombok.RequiredArgsConstructor;
@@ -23,12 +22,10 @@ import org.springframework.web.client.RestTemplate;
 public class NotificationClient {
 
     private final RestTemplate restTemplate;
+    private final InternalHeaderProvider internalHeaderProvider;
 
     @Value("${monolith.url}")
     private String monolithUrl;
-
-    @Value("${internal.auth-token}")
-    private String internalAuthToken;
 
     /**
      * 고객에게 알림 전송
@@ -63,7 +60,7 @@ public class NotificationClient {
     private void send(String targetType, Long targetId, String type, String content) {
         String url = monolithUrl + "/internal/notifications/send";
 
-        HttpHeaders headers = createHeaders();
+        HttpHeaders headers = internalHeaderProvider.createHeaders();
         headers.set("Content-Type", "application/json");
 
         NotificationRequest body = NotificationRequest.builder()
@@ -83,9 +80,4 @@ public class NotificationClient {
         log.info("알림 전송 완료: targetType={}, targetId={}, type={}", targetType, targetId, type);
     }
 
-    private HttpHeaders createHeaders() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.set(HttpHeaderConstants.X_INTERNAL_AUTH, internalAuthToken);
-        return headers;
-    }
 }

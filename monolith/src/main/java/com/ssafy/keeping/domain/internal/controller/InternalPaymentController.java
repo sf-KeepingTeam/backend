@@ -1,7 +1,7 @@
 package com.ssafy.keeping.domain.internal.controller;
 
 import com.ssafy.keeping.domain.internal.dto.PaymentCheckResponse;
-import com.ssafy.keeping.domain.internal.exception.InternalApiAuthException;
+import com.ssafy.keeping.domain.internal.service.InternalAuthValidator;
 import com.ssafy.keeping.domain.internal.service.InternalPaymentService;
 import com.ssafy.keeping.global.constants.HttpHeaderConstants;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.*;
 public class InternalPaymentController {
 
     private final InternalPaymentService internalPaymentService;
+    private final InternalAuthValidator internalAuthValidator;
 
     @Value("${internal.auth-token:internal-service-token-12345}")
     private String internalAuthToken;
@@ -33,16 +34,9 @@ public class InternalPaymentController {
             @RequestParam String idempotencyKey,
             @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
     ) {
-        validateInternalAuth(authToken);
+        internalAuthValidator.validate(authToken);
 
         PaymentCheckResponse response = internalPaymentService.checkPayment(idempotencyKey);
         return ResponseEntity.ok(response);
-    }
-
-    private void validateInternalAuth(String authToken) {
-        if (!internalAuthToken.equals(authToken)) {
-            log.warn("Internal API 인증 실패: 잘못된 토큰");
-            throw new InternalApiAuthException("Internal API 인증 실패");
-        }
     }
 }

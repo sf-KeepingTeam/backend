@@ -1,10 +1,10 @@
 package com.ssafy.keeping.qr.acl.warming;
 
+import com.ssafy.keeping.qr.acl.InternalHeaderProvider;
 import com.ssafy.keeping.qr.acl.cache.MenuCacheRepository;
 import com.ssafy.keeping.qr.acl.cache.StoreCacheRepository;
 import com.ssafy.keeping.qr.acl.dto.MenuResponse;
 import com.ssafy.keeping.qr.acl.dto.StoreResponse;
-import com.ssafy.keeping.qr.common.constants.HttpHeaderConstants;
 import com.ssafy.keeping.qr.config.CacheModeConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,12 +37,10 @@ public class CacheWarmingService {
     private final StoreCacheRepository storeCacheRepository;
     private final MenuCacheRepository menuCacheRepository;
     private final CacheModeConfig cacheConfig;
+    private final InternalHeaderProvider internalHeaderProvider;
 
     @Value("${monolith.url}")
     private String monolithUrl;
-
-    @Value("${internal.auth-token}")
-    private String internalAuthToken;
 
     @Value("${cache.warming.enabled:true}")
     private boolean warmingEnabled;
@@ -80,7 +78,7 @@ public class CacheWarmingService {
         log.info("Store 캐시 워밍 시작...");
         try {
             String url = monolithUrl + "/internal/stores/all";
-            HttpHeaders headers = createHeaders();
+            HttpHeaders headers = internalHeaderProvider.createHeaders();
 
             ResponseEntity<List<StoreResponse>> response = restTemplate.exchange(
                     url,
@@ -101,7 +99,7 @@ public class CacheWarmingService {
         log.info("Menu 캐시 워밍 시작...");
         try {
             String url = monolithUrl + "/internal/menus/all";
-            HttpHeaders headers = createHeaders();
+            HttpHeaders headers = internalHeaderProvider.createHeaders();
 
             ResponseEntity<List<MenuResponse>> response = restTemplate.exchange(
                     url,
@@ -118,9 +116,4 @@ public class CacheWarmingService {
         }
     }
 
-    private HttpHeaders createHeaders() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.set(HttpHeaderConstants.X_INTERNAL_AUTH, internalAuthToken);
-        return headers;
-    }
 }

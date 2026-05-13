@@ -2,7 +2,6 @@ package com.ssafy.keeping.domain.charge.dto.response;
 
 import lombok.*;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Getter

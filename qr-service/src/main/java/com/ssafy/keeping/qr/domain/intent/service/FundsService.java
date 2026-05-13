@@ -5,7 +5,6 @@ import com.ssafy.keeping.qr.acl.dto.FundsCaptureRequest;
 import com.ssafy.keeping.qr.acl.dto.FundsResponse;
 import com.ssafy.keeping.qr.common.exception.CustomException;
 import com.ssafy.keeping.qr.common.exception.ErrorCode;
-import com.ssafy.keeping.qr.domain.intent.constant.PaymentStatus;
 import com.ssafy.keeping.qr.domain.intent.model.PaymentIntent;
 import com.ssafy.keeping.qr.domain.intent.model.PaymentIntentItem;
 import com.ssafy.keeping.qr.domain.intent.repository.PaymentIntentRepository;

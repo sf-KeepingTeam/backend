@@ -10,7 +10,7 @@ import com.ssafy.keeping.domain.menucategory.model.MenuCategory;
 import com.ssafy.keeping.domain.menucategory.repository.MenuCategoryRepository;
 import com.ssafy.keeping.domain.store.model.Store;
 import com.ssafy.keeping.domain.store.repository.StoreRepository;
-import com.ssafy.keeping.domain.store.service.StoreService;
+
 import com.ssafy.keeping.domain.user.owner.model.Owner;
 import com.ssafy.keeping.domain.user.owner.repository.OwnerRepository;
 import com.ssafy.keeping.global.exception.CustomException;

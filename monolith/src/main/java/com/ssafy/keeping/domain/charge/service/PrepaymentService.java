@@ -1,7 +1,6 @@
 package com.ssafy.keeping.domain.charge.service;
 
 import com.ssafy.keeping.domain.charge.dto.request.PrepaymentConfirmRequest;
-import com.ssafy.keeping.domain.charge.dto.request.PrepaymentRequestDto;
 import com.ssafy.keeping.domain.charge.dto.request.PrepaymentReserveRequest;
 import com.ssafy.keeping.domain.charge.dto.response.PrepaymentReserveResponse;
 import com.ssafy.keeping.domain.charge.dto.response.PrepaymentResponseDto;
@@ -34,7 +33,6 @@ import com.ssafy.keeping.global.exception.CustomException;
 import com.ssafy.keeping.global.exception.constants.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -271,7 +269,7 @@ public class PrepaymentService {
             } catch (Exception compensateEx) {
 //                log.error("[승인] 보상 트랜잭션 실패 - 수동 처리 필요! paymentKey: {}",
 //                        request.getPaymentKey(), compensateEx);
-                // TODO: 알람 발송, 관리자 알림 등
+                // 보상 트랜잭션 실패 — 수동 처리 필요
             }
 
             throw new CustomException(ErrorCode.PAYMENT_CONFIRM_FAILED);

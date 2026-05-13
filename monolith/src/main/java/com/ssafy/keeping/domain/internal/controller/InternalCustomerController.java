@@ -4,7 +4,7 @@ import com.ssafy.keeping.domain.auth.pin.service.PinAuthService;
 import com.ssafy.keeping.domain.internal.dto.CustomerResponse;
 import com.ssafy.keeping.domain.internal.dto.PinVerifyRequest;
 import com.ssafy.keeping.domain.internal.dto.PinVerifyResponse;
-import com.ssafy.keeping.domain.internal.exception.InternalApiAuthException;
+import com.ssafy.keeping.domain.internal.service.InternalAuthValidator;
 import com.ssafy.keeping.domain.user.customer.model.Customer;
 import com.ssafy.keeping.domain.user.customer.repository.CustomerRepository;
 import com.ssafy.keeping.global.constants.HttpHeaderConstants;
@@ -26,6 +26,7 @@ import org.springframework.web.bind.annotation.*;
 public class InternalCustomerController {
 
     private final CustomerRepository customerRepository;
+    private final InternalAuthValidator internalAuthValidator;
     private final PinAuthService pinAuthService;
 
     @Value("${internal.auth-token:internal-service-token-12345}")
@@ -39,7 +40,7 @@ public class InternalCustomerController {
             @PathVariable Long customerId,
             @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
     ) {
-        validateInternalAuth(authToken);
+        internalAuthValidator.validate(authToken);
 
         Customer customer = customerRepository.findByCustomerIdAndDeletedAtIsNull(customerId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
@@ -56,7 +57,7 @@ public class InternalCustomerController {
             @RequestBody PinVerifyRequest request,
             @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
     ) {
-        validateInternalAuth(authToken);
+        internalAuthValidator.validate(authToken);
 
         // 고객 존재 여부 확인
         customerRepository.findByCustomerIdAndDeletedAtIsNull(customerId)
@@ -77,7 +78,7 @@ public class InternalCustomerController {
             @RequestBody PinVerifyRequest request,
             @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
     ) {
-        validateInternalAuth(authToken);
+        internalAuthValidator.validate(authToken);
 
         // 고객 존재 여부 확인
         customerRepository.findByCustomerIdAndDeletedAtIsNull(customerId)
@@ -90,12 +91,5 @@ public class InternalCustomerController {
                 .verified(pinMatches)
                 .customerId(customerId)
                 .build());
-    }
-
-    private void validateInternalAuth(String authToken) {
-        if (!internalAuthToken.equals(authToken)) {
-            log.warn("Internal API 인증 실패: 잘못된 토큰");
-            throw new InternalApiAuthException("Internal API 인증 실패");
-        }
     }
 }

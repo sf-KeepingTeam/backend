@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ssafy.keeping.domain.auth.enums.UserRole;
 import com.ssafy.keeping.domain.auth.security.principal.UserPrincipal;
 import com.ssafy.keeping.domain.auth.token.AccessTokenService;
+import com.ssafy.keeping.global.constants.HttpHeaderConstants;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
@@ -42,12 +43,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter { // OncePerRe
         // Authorization 헤더가 없거나 "Bearer "로 시작하지 않으면 JWT 인증을 시도하지 않고 다음 필터로 넘긴다.
         // 그 요청을 막을지 말지는 SecurityConfig의 인가 규칙(anyRequest().authenticated()) 또는 뒤 필터/컨트롤러에서 결정됨.
         String header = request.getHeader("Authorization");
-        if (header == null || !header.startsWith("Bearer ")) {
+        if (header == null || !header.startsWith(HttpHeaderConstants.BEARER_PREFIX)) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        String token = header.substring("Bearer ".length()).trim();
+        String token = header.substring(HttpHeaderConstants.BEARER_PREFIX.length()).trim();
         if (token.isBlank() || token.equals("null") || token.equals("undefined")) {
             filterChain.doFilter(request, response);
             return;

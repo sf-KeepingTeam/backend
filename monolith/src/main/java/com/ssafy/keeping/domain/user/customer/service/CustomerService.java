@@ -9,7 +9,7 @@ import com.ssafy.keeping.domain.user.customer.dto.CustomerProfileResponse;
 import com.ssafy.keeping.domain.user.customer.dto.CustomerProfileUpdateRequest;
 import com.ssafy.keeping.domain.user.dto.ProfileUploadResponse;
 import com.ssafy.keeping.global.s3.service.ImageService;
-import com.ssafy.keeping.domain.wallet.repository.WalletRepository;
+
 import com.ssafy.keeping.global.exception.CustomException;
 import com.ssafy.keeping.global.exception.constants.ErrorCode;
 import lombok.RequiredArgsConstructor;

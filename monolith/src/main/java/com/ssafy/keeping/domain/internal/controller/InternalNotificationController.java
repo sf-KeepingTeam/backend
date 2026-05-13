@@ -1,7 +1,7 @@
 package com.ssafy.keeping.domain.internal.controller;
 
 import com.ssafy.keeping.domain.internal.dto.NotificationRequest;
-import com.ssafy.keeping.domain.internal.exception.InternalApiAuthException;
+import com.ssafy.keeping.domain.internal.service.InternalAuthValidator;
 import com.ssafy.keeping.domain.notification.entity.NotificationType;
 import com.ssafy.keeping.domain.notification.service.NotificationService;
 import com.ssafy.keeping.global.constants.HttpHeaderConstants;
@@ -23,6 +23,7 @@ import java.util.Map;
 public class InternalNotificationController {
 
     private final NotificationService notificationService;
+    private final InternalAuthValidator internalAuthValidator;
 
     @Value("${internal.auth-token:internal-service-token-12345}")
     private String internalAuthToken;
@@ -35,7 +36,7 @@ public class InternalNotificationController {
             @RequestBody NotificationRequest request,
             @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
     ) {
-        validateInternalAuth(authToken);
+        internalAuthValidator.validate(authToken);
 
         NotificationType notificationType;
         try {
@@ -64,12 +65,5 @@ public class InternalNotificationController {
         }
 
         return ResponseEntity.ok(Map.of("status", "sent"));
-    }
-
-    private void validateInternalAuth(String authToken) {
-        if (!internalAuthToken.equals(authToken)) {
-            log.warn("Internal API 인증 실패: 잘못된 토큰");
-            throw new InternalApiAuthException("Internal API 인증 실패");
-        }
     }
 }

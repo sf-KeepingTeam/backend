@@ -75,7 +75,6 @@ public class OwnerStoreController {
         return ResponseEntity.ok(ApiResponse.success("내 매장 목록이 조회되었습니다.", HttpStatus.OK.value(), stores));
     }
 
-    // TODO: 가게 주인 자신이 볼 수 있는 전체 정보(민감정보 마스킹 or 마스킹 X)
     @GetMapping("/{storeId}")
     public ResponseEntity<ApiResponse<StorePublicDto>> getStore(
             @PathVariable Long storeId

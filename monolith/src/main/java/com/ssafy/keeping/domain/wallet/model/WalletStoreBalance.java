@@ -47,7 +47,6 @@ public class WalletStoreBalance {
 
     public void subtractBalance(Long amount) {
         if (this.balance < amount) {
-            // TODO: 커스텀익셉션 으로 변경하기
             throw new IllegalArgumentException("잔액 부족: " + this.balance + " < " + amount);
         }
         this.balance = this.balance - amount;

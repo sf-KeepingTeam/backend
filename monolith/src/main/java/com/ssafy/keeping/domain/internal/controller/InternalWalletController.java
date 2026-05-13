@@ -6,12 +6,11 @@ import com.ssafy.keeping.domain.internal.dto.FundsResponse;
 import com.ssafy.keeping.domain.internal.dto.RefundRequest;
 import com.ssafy.keeping.domain.internal.dto.RefundResponse;
 import com.ssafy.keeping.domain.internal.dto.WalletBalanceResponse;
-import com.ssafy.keeping.domain.internal.exception.InternalApiAuthException;
+import com.ssafy.keeping.domain.internal.service.InternalAuthValidator;
 import com.ssafy.keeping.domain.internal.service.InternalWalletService;
 import com.ssafy.keeping.global.constants.HttpHeaderConstants;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -27,9 +26,7 @@ import org.springframework.web.bind.annotation.*;
 public class InternalWalletController {
 
     private final InternalWalletService internalWalletService;
-
-    @Value("${internal.auth-token:internal-service-token-12345}")
-    private String internalAuthToken;
+    private final InternalAuthValidator internalAuthValidator;
 
     /**
      * 지갑의 매장별 잔액 조회
@@ -40,7 +37,7 @@ public class InternalWalletController {
             @PathVariable Long storeId,
             @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
     ) {
-        validateInternalAuth(authToken);
+        internalAuthValidator.validate(authToken);
 
         WalletBalanceResponse response = internalWalletService.getBalance(walletId, storeId);
         return ResponseEntity.ok(response);
@@ -58,7 +55,7 @@ public class InternalWalletController {
             @RequestHeader(value = HttpHeaderConstants.IDEMPOTENCY_KEY) String idempotencyKey,
             @RequestBody FundsCaptureRequest request
     ) {
-        validateInternalAuth(authToken);
+        internalAuthValidator.validate(authToken);
 
         IdempotentResult<FundsResponse> result = internalWalletService.captureIdempotent(
                 request, idempotencyKey);
@@ -80,7 +77,7 @@ public class InternalWalletController {
             @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken,
             @RequestBody RestoreRequest request
     ) {
-        validateInternalAuth(authToken);
+        internalAuthValidator.validate(authToken);
 
         internalWalletService.restore(walletId, storeId, request.amount());
         return ResponseEntity.ok().build();
@@ -97,7 +94,7 @@ public class InternalWalletController {
             @RequestHeader(value = HttpHeaderConstants.IDEMPOTENCY_KEY) String idempotencyKey,
             @RequestBody RefundRequest request
     ) {
-        validateInternalAuth(authToken);
+        internalAuthValidator.validate(authToken);
 
         IdempotentResult<RefundResponse> result = internalWalletService.processRefundIdempotent(
                 walletId, request, idempotencyKey);
@@ -107,13 +104,6 @@ public class InternalWalletController {
             builder.header(HttpHeaders.RETRY_AFTER, result.getRetryAfterSeconds().toString());
         }
         return builder.body(result.getBody());
-    }
-
-    private void validateInternalAuth(String authToken) {
-        if (!internalAuthToken.equals(authToken)) {
-            log.warn("Internal API 인증 실패: 잘못된 토큰");
-            throw new InternalApiAuthException("Internal API 인증 실패");
-        }
     }
 
     public record RestoreRequest(Long amount) {}

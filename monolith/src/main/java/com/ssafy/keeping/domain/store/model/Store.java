@@ -57,7 +57,6 @@ public class Store {
     @Column(nullable = false)
     private String category;
 
-    // TODO file system은 나중에
     @Column(name = "img_url", nullable = false)
     private String imgUrl;
 
@@ -96,7 +95,6 @@ public class Store {
         if (!Objects.equals(this.imgUrl,     imgUrl))                     this.imgUrl = imgUrl;
     }
 
-    // TODO: 점주 탈퇴 시 사용하여 유령가게 방지
     public void deleteStore(StoreStatus storeStatus) {
         if (!Objects.equals(StoreStatus.DELETED, storeStatus)) this.deletedAt = LocalDateTime.now();
         this.storeStatus = storeStatus;

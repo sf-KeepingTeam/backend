@@ -4,7 +4,6 @@ package com.ssafy.keeping.domain.store.dto;
 import jakarta.validation.constraints.Pattern;
 import org.springframework.lang.Nullable;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.springframework.web.multipart.MultipartFile;
@@ -30,7 +29,6 @@ public class StoreRequestDto {
 
     private String description;
 
-    //TODO: 파일서버 구축 후 수정
     @Nullable
     private MultipartFile imgFile;
 }

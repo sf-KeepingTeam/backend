@@ -19,7 +19,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Positive;
 
 @RestController
 @RequestMapping("/api/v1/customers")

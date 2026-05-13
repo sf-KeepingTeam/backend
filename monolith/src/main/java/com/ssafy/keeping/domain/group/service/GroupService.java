@@ -272,9 +272,6 @@ public class GroupService {
                     groupWallet.walletId());
         }
 
-        /* TODO: 복사해서 줄때 복사 날짜 시간을 접미사로 얹어서 주면,
-            일정 시간이 지나면 안되게도 할 건지 논의 필요
-        * */
         String groupCode = groupRepository.findGroupCodeById(groupId);
         if (!Objects.equals(groupCode, requestDto.getInviteCode()))
             throw new CustomException(ErrorCode.CODE_NOT_MATCH);

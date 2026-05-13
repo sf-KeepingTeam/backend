@@ -45,7 +45,7 @@ public class SignupTicketService {
         String key = PREFIX + ticket;
 
         String json = redis.opsForValue().get(key); // Redis에서 조회(GET)
-        if (json == null) return null; // TODO: ticket 존재 안 하면 null 말고 명확한 예외
+        if (json == null) return null;
 
         try {
             return objectMapper.readValue(json, SignupTicketPayload.class);

@@ -52,7 +52,6 @@ public class CancelService {
 
         log.info("[취소] 취소 가능한 거래 목록 조회 - 고객ID: {}", customerId);
 
-        // TODO: 취소 가능한 거래 목록 조회 기능 추가 필요
         return Page.empty(pageable);
     }
 

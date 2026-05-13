@@ -1,7 +1,6 @@
 package com.ssafy.keeping.domain.wallet.dto;
 
 import com.ssafy.keeping.domain.payment.transactions.model.Transaction;
-import com.ssafy.keeping.domain.user.customer.model.Customer;
 
 import java.time.LocalDateTime;
 

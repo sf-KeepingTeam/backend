@@ -3,7 +3,6 @@ package com.ssafy.keeping.qr.acl;
 import com.ssafy.keeping.qr.acl.dto.CustomerResponse;
 import com.ssafy.keeping.qr.acl.dto.PinVerifyRequest;
 import com.ssafy.keeping.qr.acl.dto.PinVerifyResponse;
-import com.ssafy.keeping.qr.common.constants.HttpHeaderConstants;
 import com.ssafy.keeping.qr.common.exception.CustomException;
 import com.ssafy.keeping.qr.common.exception.ErrorCode;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
@@ -12,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
+
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
@@ -30,12 +30,10 @@ import java.util.Optional;
 public class CustomerClient {
 
     private final RestTemplate restTemplate;
+    private final InternalHeaderProvider internalHeaderProvider;
 
     @Value("${monolith.url}")
     private String monolithUrl;
-
-    @Value("${internal.auth-token}")
-    private String internalAuthToken;
 
     /**
      * 고객 정보 조회
@@ -45,7 +43,7 @@ public class CustomerClient {
     public Optional<CustomerResponse> getCustomer(Long customerId) {
         String url = monolithUrl + "/internal/customers/" + customerId;
 
-        HttpHeaders headers = createHeaders();
+        HttpHeaders headers = internalHeaderProvider.createHeaders();
 
         ResponseEntity<CustomerResponse> response = restTemplate.exchange(
                 url,
@@ -70,7 +68,7 @@ public class CustomerClient {
     public boolean verifyPin(Long customerId, String pin) {
         String url = monolithUrl + "/internal/customers/" + customerId + "/pin-verify";
 
-        HttpHeaders headers = createHeaders();
+        HttpHeaders headers = internalHeaderProvider.createHeaders();
         headers.set("Content-Type", "application/json");
 
         PinVerifyRequest body = new PinVerifyRequest(pin);
@@ -90,9 +88,4 @@ public class CustomerClient {
         throw new CustomException(ErrorCode.CUSTOMER_SERVICE_UNAVAILABLE, t);
     }
 
-    private HttpHeaders createHeaders() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.set(HttpHeaderConstants.X_INTERNAL_AUTH, internalAuthToken);
-        return headers;
-    }
 }

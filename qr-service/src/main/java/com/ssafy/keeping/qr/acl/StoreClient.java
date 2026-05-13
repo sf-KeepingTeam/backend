@@ -2,7 +2,6 @@ package com.ssafy.keeping.qr.acl;
 
 import com.ssafy.keeping.qr.acl.cache.StoreCacheRepository;
 import com.ssafy.keeping.qr.acl.dto.StoreResponse;
-import com.ssafy.keeping.qr.common.constants.HttpHeaderConstants;
 import com.ssafy.keeping.qr.common.exception.CustomException;
 import com.ssafy.keeping.qr.common.exception.ErrorCode;
 import com.ssafy.keeping.qr.config.CacheModeConfig;
@@ -37,12 +36,10 @@ public class StoreClient {
     private final RestTemplate restTemplate;
     private final StoreCacheRepository cacheRepository;
     private final CacheModeConfig cacheConfig;
+    private final InternalHeaderProvider internalHeaderProvider;
 
     @Value("${monolith.url}")
     private String monolithUrl;
-
-    @Value("${internal.auth-token}")
-    private String internalAuthToken;
 
     /**
      * 매장 정보 조회 (캐시 모드별 분기)
@@ -73,7 +70,7 @@ public class StoreClient {
     @Retry(name = "storeClient", fallbackMethod = "fetchFromMonolithFallback")
     public Optional<StoreResponse> fetchFromMonolithDirect(Long storeId) {
         String url = monolithUrl + "/internal/stores/" + storeId;
-        HttpHeaders headers = createHeaders();
+        HttpHeaders headers = internalHeaderProvider.createHeaders();
 
         ResponseEntity<StoreResponse> response = restTemplate.exchange(
                 url,
@@ -94,7 +91,7 @@ public class StoreClient {
         log.debug("Store 조회 - Cache Miss, 모놀리스 호출: storeId={}", storeId);
         String url = monolithUrl + "/internal/stores/" + storeId;
 
-        HttpHeaders headers = createHeaders();
+        HttpHeaders headers = internalHeaderProvider.createHeaders();
 
         ResponseEntity<StoreResponse> response = restTemplate.exchange(
                 url,
@@ -117,9 +114,4 @@ public class StoreClient {
         throw new CustomException(ErrorCode.STORE_SERVICE_UNAVAILABLE, t);
     }
 
-    private HttpHeaders createHeaders() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.set(HttpHeaderConstants.X_INTERNAL_AUTH, internalAuthToken);
-        return headers;
-    }
 }

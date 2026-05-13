@@ -42,7 +42,6 @@ public class IdempotencyKey {
     @Column(name="actor_id", nullable = false)
     private Long actorId;
 
-    // TODO: ENUM으로 변경 고려
     @Column(name="method", nullable = false, length = 10)
     private String method; // POST, PUT...
 
