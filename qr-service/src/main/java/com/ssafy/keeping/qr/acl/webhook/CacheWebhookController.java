@@ -1,5 +1,6 @@
 package com.ssafy.keeping.qr.acl.webhook;
 
+import com.ssafy.keeping.qr.acl.InternalAuthValidator;
 import com.ssafy.keeping.qr.acl.cache.MenuCacheRepository;
 import com.ssafy.keeping.qr.acl.cache.StoreCacheRepository;
 import com.ssafy.keeping.qr.acl.dto.MenuResponse;
@@ -7,7 +8,6 @@ import com.ssafy.keeping.qr.acl.dto.StoreResponse;
 import com.ssafy.keeping.qr.common.constants.HttpHeaderConstants;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,9 +23,7 @@ public class CacheWebhookController {
 
     private final StoreCacheRepository storeCacheRepository;
     private final MenuCacheRepository menuCacheRepository;
-
-    @Value("${internal.auth-token}")
-    private String internalAuthToken;
+    private final InternalAuthValidator internalAuthValidator;
 
     /**
      * Store 캐시 갱신/삭제
@@ -38,7 +36,7 @@ public class CacheWebhookController {
             @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken,
             @RequestBody(required = false) StoreResponse store
     ) {
-        validateInternalAuth(authToken);
+        internalAuthValidator.validate(authToken);
 
         if (store != null) {
             storeCacheRepository.save(storeId, store);
@@ -62,7 +60,7 @@ public class CacheWebhookController {
             @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken,
             @RequestBody(required = false) MenuResponse menu
     ) {
-        validateInternalAuth(authToken);
+        internalAuthValidator.validate(authToken);
 
         if (menu != null) {
             menuCacheRepository.save(menuId, menu);
@@ -75,10 +73,4 @@ public class CacheWebhookController {
         return ResponseEntity.ok().build();
     }
 
-    private void validateInternalAuth(String authToken) {
-        if (!internalAuthToken.equals(authToken)) {
-            log.warn("Internal API 인증 실패: 잘못된 토큰");
-            throw new IllegalArgumentException("Internal API 인증 실패");
-        }
-    }
 }
