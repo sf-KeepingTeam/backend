@@ -1,6 +1,5 @@
 package com.ssafy.keeping.domain.notification.service;
 
-import com.google.firebase.messaging.*;
 import com.ssafy.keeping.domain.notification.entity.FcmToken;
 import com.ssafy.keeping.domain.notification.entity.NotificationType;
 import com.ssafy.keeping.domain.notification.repository.FcmTokenRepository;
@@ -37,7 +36,6 @@ public class FcmService {
         Customer customer = customerRepository.findByCustomerIdAndDeletedAtIsNull(customerId)
                 .orElseThrow(() -> new CustomException(ErrorCode.CUSTOMER_NOT_FOUND));
 
-        // 기존 토큰이 있으면 업데이트, 없으면 새로 생성
         FcmToken fcmToken = fcmTokenRepository.findByCustomerIdAndToken(customerId, token)
                 .orElse(null);
 
@@ -64,7 +62,6 @@ public class FcmService {
         Owner owner = ownerRepository.findByOwnerIdAndDeletedAtIsNull(ownerId)
                 .orElseThrow(() -> new CustomException(ErrorCode.OWNER_NOT_FOUND));
 
-        // 기존 토큰이 있으면 업데이트, 없으면 새로 생성
         FcmToken fcmToken = fcmTokenRepository.findByOwnerIdAndToken(ownerId, token)
                 .orElse(null);
 
@@ -87,7 +84,7 @@ public class FcmService {
     @Transactional
     public void deleteToken(String token) {
         log.info("FCM 토큰 삭제 요청 - 토큰: {}", token.substring(0, 20) + "...");
-        
+
         fcmTokenRepository.deleteByToken(token);
         log.info("FCM 토큰 삭제 완료");
     }
@@ -127,46 +124,12 @@ public class FcmService {
     }
 
     /**
-     * FCM 메시지 전송
+     * FCM 메시지 전송 (Stub)
+     *
+     * Firebase Admin SDK 의존성 제거 — 실제 푸시 발송 대신 로그만 출력한다.
      */
     private void sendMessage(String token, String title, String body, Map<String, String> data) {
-        try {
-            Message.Builder messageBuilder = Message.builder()
-                    .setToken(token)
-                    .setNotification(Notification.builder()
-                            .setTitle(title)
-                            .setBody(body)
-                            .build())
-                    .setWebpushConfig(WebpushConfig.builder()
-                            .setNotification(WebpushNotification.builder()
-                                    .setTitle(title)
-                                    .setBody(body)
-                                    .setIcon("/icon-192x192.png") // 웹 푸시 아이콘
-                                    .build())
-                            .build());
-
-            // 추가 데이터가 있으면 포함
-            if (data != null && !data.isEmpty()) {
-                messageBuilder.putAllData(data);
-            }
-
-            Message message = messageBuilder.build();
-            String response = FirebaseMessaging.getInstance().send(message);
-            
-            log.info("FCM 메시지 전송 성공 - 응답: {}", response);
-            
-        } catch (FirebaseMessagingException e) {
-            log.error("FCM 메시지 전송 실패 - 토큰: {}, 오류: {}", 
-                    token.substring(0, 20) + "...", e.getMessage());
-            
-            // 유효하지 않은 토큰이면 DB에서 삭제
-            if (e.getMessagingErrorCode() == MessagingErrorCode.UNREGISTERED ||
-                e.getMessagingErrorCode() == MessagingErrorCode.INVALID_ARGUMENT) {
-                log.info("유효하지 않은 토큰 삭제 - 토큰: {}", token.substring(0, 20) + "...");
-                fcmTokenRepository.deleteByToken(token);
-            }
-        } catch (Exception e) {
-            log.error("FCM 메시지 전송 중 예상치 못한 오류", e);
-        }
+        log.info("[FCM Stub] 알림 발송 — token: {}..., title: {}, body: {}, data: {}",
+                token.substring(0, Math.min(token.length(), 20)), title, body, data);
     }
 }
