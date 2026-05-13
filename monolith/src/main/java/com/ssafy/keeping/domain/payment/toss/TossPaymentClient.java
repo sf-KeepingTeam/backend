@@ -1,138 +1,88 @@
 package com.ssafy.keeping.domain.payment.toss;
 
-import com.ssafy.keeping.domain.payment.toss.config.TossPaymentConfig;
 import com.ssafy.keeping.domain.payment.toss.dto.TossCancelRequest;
 import com.ssafy.keeping.domain.payment.toss.dto.TossCancelResponse;
 import com.ssafy.keeping.domain.payment.toss.dto.TossPaymentConfirmRequest;
 import com.ssafy.keeping.domain.payment.toss.dto.TossPaymentConfirmResponse;
-import com.ssafy.keeping.global.exception.CustomException;
-import com.ssafy.keeping.global.exception.constants.ErrorCode;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.*;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.RestTemplate;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.UUID;
 
 /**
- * 토스페이먼츠 API 클라이언트
- * 토스 API와의 HTTP 통신을 담당
+ * 토스페이먼츠 API 클라이언트 (Stub)
+ *
+ * 실제 토스 API를 호출하지 않고 항상 성공 응답을 반환한다.
+ * 결제 게이트웨이 추상화 계층(TossPaymentGateway)과 비즈니스 로직은 그대로 유지.
  */
 @Slf4j
 @Component
 public class TossPaymentClient {
 
-    private final TossPaymentConfig config;
-    private final RestTemplate restTemplate;
-
-    public TossPaymentClient(TossPaymentConfig config) {
-        this.config = config;
-        this.restTemplate = new RestTemplate();
-    }
-
     /**
-     * 결제 승인 API 호출
-     * POST /v1/payments/confirm
+     * 결제 승인 — 항상 성공(status=DONE) 반환
      */
     public TossPaymentConfirmResponse confirmPayment(TossPaymentConfirmRequest request) {
-        String url = config.getBaseUrl() + "/v1/payments/confirm";
+        log.info("[TossStub] 결제 승인 stub 처리 - orderId: {}, amount: {}",
+                request.getOrderId(), request.getAmount());
 
-//        log.info("[토스] 결제 승인 요청 - paymentKey: {}, orderId: {}, amount: {}",
-//                request.getPaymentKey(), request.getOrderId(), request.getAmount());
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.of("+09:00"));
 
-        try {
-            HttpEntity<TossPaymentConfirmRequest> entity = new HttpEntity<>(request, createHeaders());
+        TossPaymentConfirmResponse response = new TossPaymentConfirmResponse();
+        response.setPaymentKey(request.getPaymentKey() != null
+                ? request.getPaymentKey()
+                : "stub_pk_" + UUID.randomUUID());
+        response.setOrderId(request.getOrderId());
+        response.setOrderName("stub-order");
+        response.setStatus("DONE");
+        response.setTotalAmount(request.getAmount());
+        response.setBalanceAmount(request.getAmount());
+        response.setMethod("카드");
+        response.setRequestedAt(now);
+        response.setApprovedAt(now);
 
-            ResponseEntity<TossPaymentConfirmResponse> response = restTemplate.exchange(
-                    url,
-                    HttpMethod.POST,
-                    entity,
-                    TossPaymentConfirmResponse.class
-            );
+        TossPaymentConfirmResponse.CardInfo card = new TossPaymentConfirmResponse.CardInfo();
+        card.setCompany("stub카드");
+        card.setNumber("****-****-****-0000");
+        card.setInstallmentPlanMonths(0);
+        card.setApproveNo("00000000");
+        card.setUseCardPoint(false);
+        card.setCardType("신용");
+        card.setOwnerType("개인");
+        card.setAcquireStatus("READY");
+        card.setIssuerCode("00");
+        card.setAcquirerCode("00");
+        response.setCard(card);
 
-            TossPaymentConfirmResponse body = response.getBody();
-
-            if (body != null && body.isSuccess()) {
-//                log.info("[토스] 결제 승인 성공 - paymentKey: {}, status: {}",
-//                        body.getPaymentKey(), body.getStatus());
-            } else {
-//                log.warn("[토스] 결제 승인 실패 - code: {}, message: {}",
-//                        body != null ? body.getCode() : "unknown",
-//                        body != null ? body.getMessage() : "unknown");
-            }
-
-            return body;
-
-        } catch (HttpClientErrorException e) {
-//            log.error("[토스] 결제 승인 API 오류 - status: {}, body: {}",
-//                    e.getStatusCode(), e.getResponseBodyAsString());
-            throw new CustomException(ErrorCode.PAYMENT_CONFIRM_FAILED);
-        } catch (Exception e) {
-//            log.error("[토스] 결제 승인 중 예외 발생", e);
-            throw new CustomException(ErrorCode.EXTERNAL_API_ERROR);
-        }
+        return response;
     }
 
     /**
-     * 결제 취소 API 호출
-     * POST /v1/payments/{paymentKey}/cancel
+     * 결제 취소 — 항상 성공(status=CANCELED) 반환
      */
     public TossCancelResponse cancelPayment(String paymentKey, TossCancelRequest request) {
-        String url = config.getBaseUrl() + "/v1/payments/" + paymentKey + "/cancel";
+        log.info("[TossStub] 결제 취소 stub 처리 - paymentKey: {}, cancelAmount: {}",
+                paymentKey, request.getCancelAmount());
 
-//        log.info("[토스] 결제 취소 요청 - paymentKey: {}, cancelReason: {}, cancelAmount: {}",
-//                paymentKey, request.getCancelReason(), request.getCancelAmount());
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.of("+09:00"));
 
-        try {
-            HttpEntity<TossCancelRequest> entity = new HttpEntity<>(request, createHeaders());
+        TossCancelResponse response = new TossCancelResponse();
+        response.setPaymentKey(paymentKey);
+        response.setOrderId("stub-order-" + UUID.randomUUID().toString().substring(0, 8));
+        response.setStatus("CANCELED");
+        response.setTotalAmount(request.getCancelAmount() != null ? request.getCancelAmount() : 0L);
+        response.setBalanceAmount(0L);
 
-            ResponseEntity<TossCancelResponse> response = restTemplate.exchange(
-                    url,
-                    HttpMethod.POST,
-                    entity,
-                    TossCancelResponse.class
-            );
+        TossCancelResponse.CancelInfo cancelInfo = new TossCancelResponse.CancelInfo();
+        cancelInfo.setCancelAmount(request.getCancelAmount());
+        cancelInfo.setCancelReason(request.getCancelReason());
+        cancelInfo.setCanceledAt(now);
+        cancelInfo.setTransactionKey("stub_txk_" + UUID.randomUUID().toString().substring(0, 8));
+        response.setCancels(List.of(cancelInfo));
 
-            TossCancelResponse body = response.getBody();
-
-            if (body != null && body.isSuccess()) {
-//                log.info("[토스] 결제 취소 성공 - paymentKey: {}, status: {}",
-//                        body.getPaymentKey(), body.getStatus());
-            } else {
-//                log.warn("[토스] 결제 취소 실패 - code: {}, message: {}",
-//                        body != null ? body.getCode() : "unknown",
-//                        body != null ? body.getMessage() : "unknown");
-            }
-
-            return body;
-
-        } catch (HttpClientErrorException e) {
-//            log.error("[토스] 결제 취소 API 오류 - status: {}, body: {}",
-//                    e.getStatusCode(), e.getResponseBodyAsString());
-            throw new CustomException(ErrorCode.PAYMENT_CANCEL_FAILED);
-        } catch (Exception e) {
-//            log.error("[토스] 결제 취소 중 예외 발생", e);
-            throw new CustomException(ErrorCode.EXTERNAL_API_ERROR);
-        }
-    }
-
-    /**
-     * 토스 API 인증 헤더 생성
-     * Basic Auth: Base64(secretKey:)
-     */
-    private HttpHeaders createHeaders() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-
-        // Basic Auth: secretKey + ":" 를 Base64 인코딩
-        String credentials = config.getSecretKey() + ":";
-        String encodedCredentials = Base64.getEncoder()
-                .encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
-
-        headers.set("Authorization", "Basic " + encodedCredentials);
-
-        return headers;
+        return response;
     }
 }
