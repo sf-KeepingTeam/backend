@@ -42,13 +42,13 @@ public class QrServiceWebhookPublisher {
 
     /**
      * Store 생성/수정 시 캐시 갱신 Push
-     * 실패 시 3회 재시도 (500ms → 1s → 2s)
+     * 실패 시 최대 3회 재시도 (1s → 2s → 4s)
      */
     @Async("webhookExecutor")
     @Retryable(
             retryFor = {RestClientException.class, ResourceAccessException.class},
-            maxAttempts = 3,
-            backoff = @Backoff(delay = 500, multiplier = 2)
+            maxAttempts = 4,
+            backoff = @Backoff(delay = 1000, multiplier = 2)
     )
     public void publishStoreUpdate(Store store) {
         if (!webhookEnabled) {
@@ -68,19 +68,19 @@ public class QrServiceWebhookPublisher {
 
     @Recover
     public void recoverStoreUpdate(Exception e, Store store) {
-        log.error("Store 캐시 Push 최종 실패 (3회 재시도 후): storeId={}, error={}",
+        log.warn("Store 캐시 Push 최종 실패 (3회 재시도 후): storeId={}, error={}",
                 store.getStoreId(), e.getMessage());
     }
 
     /**
      * Store 삭제 시 캐시 삭제 Push
-     * 실패 시 3회 재시도 (500ms → 1s → 2s)
+     * 실패 시 최대 3회 재시도 (1s → 2s → 4s)
      */
     @Async("webhookExecutor")
     @Retryable(
             retryFor = {RestClientException.class, ResourceAccessException.class},
-            maxAttempts = 3,
-            backoff = @Backoff(delay = 500, multiplier = 2)
+            maxAttempts = 4,
+            backoff = @Backoff(delay = 1000, multiplier = 2)
     )
     public void publishStoreDelete(Long storeId) {
         if (!webhookEnabled) {
@@ -99,19 +99,19 @@ public class QrServiceWebhookPublisher {
 
     @Recover
     public void recoverStoreDelete(Exception e, Long storeId) {
-        log.error("Store 캐시 삭제 Push 최종 실패 (3회 재시도 후): storeId={}, error={}",
+        log.warn("Store 캐시 삭제 Push 최종 실패 (3회 재시도 후): storeId={}, error={}",
                 storeId, e.getMessage());
     }
 
     /**
      * Menu 생성/수정 시 캐시 갱신 Push
-     * 실패 시 3회 재시도 (500ms → 1s → 2s)
+     * 실패 시 최대 3회 재시도 (1s → 2s → 4s)
      */
     @Async("webhookExecutor")
     @Retryable(
             retryFor = {RestClientException.class, ResourceAccessException.class},
-            maxAttempts = 3,
-            backoff = @Backoff(delay = 500, multiplier = 2)
+            maxAttempts = 4,
+            backoff = @Backoff(delay = 1000, multiplier = 2)
     )
     public void publishMenuUpdate(Menu menu) {
         if (!webhookEnabled) {
@@ -131,19 +131,19 @@ public class QrServiceWebhookPublisher {
 
     @Recover
     public void recoverMenuUpdate(Exception e, Menu menu) {
-        log.error("Menu 캐시 Push 최종 실패 (3회 재시도 후): menuId={}, error={}",
+        log.warn("Menu 캐시 Push 최종 실패 (3회 재시도 후): menuId={}, error={}",
                 menu.getMenuId(), e.getMessage());
     }
 
     /**
      * Menu 삭제 시 캐시 삭제 Push
-     * 실패 시 3회 재시도 (500ms → 1s → 2s)
+     * 실패 시 최대 3회 재시도 (1s → 2s → 4s)
      */
     @Async("webhookExecutor")
     @Retryable(
             retryFor = {RestClientException.class, ResourceAccessException.class},
-            maxAttempts = 3,
-            backoff = @Backoff(delay = 500, multiplier = 2)
+            maxAttempts = 4,
+            backoff = @Backoff(delay = 1000, multiplier = 2)
     )
     public void publishMenuDelete(Long menuId) {
         if (!webhookEnabled) {
@@ -162,7 +162,7 @@ public class QrServiceWebhookPublisher {
 
     @Recover
     public void recoverMenuDelete(Exception e, Long menuId) {
-        log.error("Menu 캐시 삭제 Push 최종 실패 (3회 재시도 후): menuId={}, error={}",
+        log.warn("Menu 캐시 삭제 Push 최종 실패 (3회 재시도 후): menuId={}, error={}",
                 menuId, e.getMessage());
     }
 

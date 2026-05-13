@@ -68,9 +68,19 @@ public class IdempotencyKey {
     @Column(name = "created_at", nullable = false, columnDefinition = "DATETIME(3)")
     private LocalDateTime createdAt;
 
+    // NOTE: prod 배포 시 ALTER TABLE idempotency_keys ADD COLUMN updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3);
+    @Column(name = "updated_at", nullable = false, columnDefinition = "DATETIME(3)")
+    private LocalDateTime updatedAt;
+
     @PrePersist
     void prePersist() {
         if (createdAt == null) createdAt = LocalDateTime.now();
+        if (updatedAt == null) updatedAt = createdAt;
         if (status == null) status = IdemStatus.IN_PROGRESS;
+    }
+
+    @PreUpdate
+    void preUpdate() {
+        updatedAt = LocalDateTime.now();
     }
 }

@@ -11,12 +11,14 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -105,6 +107,23 @@ public class IdempotencyService {
         row.setResponseJson(null);
         row.setIntentPublicId(intentPublicId);
         idempotencyKeyRepository.save(row);
+    }
+
+    /**
+     * IN_PROGRESS 상태로 5분 초과된 레코드 정리 (5분마다 실행)
+     * 비정상 종료 등으로 DONE 전이 못한 고아 레코드 삭제
+     */
+    @Scheduled(fixedRate = 300_000)
+    @Transactional
+    public void cleanupStalledInProgress() {
+        LocalDateTime threshold = LocalDateTime.now(clock).minusMinutes(5);
+        List<IdempotencyKey> stalled = idempotencyKeyRepository
+                .findByStatusAndCreatedAtBefore(IdemStatus.IN_PROGRESS, threshold);
+
+        if (!stalled.isEmpty()) {
+            idempotencyKeyRepository.deleteAll(stalled);
+            log.info("IN_PROGRESS 만료 레코드 {}건 정리", stalled.size());
+        }
     }
 
     /**

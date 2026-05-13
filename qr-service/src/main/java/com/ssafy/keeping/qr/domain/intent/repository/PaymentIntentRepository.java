@@ -40,12 +40,14 @@ public interface PaymentIntentRepository extends JpaRepository<PaymentIntent, Lo
 
     /**
      * 복구 대상 조회: UNCERTAIN 상태이거나 만료된 PENDING 상태의 Intent
+     * retryCount > 10인 건은 이미 최대 재시도 초과이므로 제외
      */
     @Query("""
         SELECT pi FROM PaymentIntent pi
         WHERE (pi.status = :uncertainStatus
                OR (pi.status = :pendingStatus AND pi.expiresAt < :now))
           AND pi.createdAt > :since
+          AND pi.retryCount <= 10
         ORDER BY pi.createdAt ASC
         """)
     List<PaymentIntent> findRecoveryTargets(

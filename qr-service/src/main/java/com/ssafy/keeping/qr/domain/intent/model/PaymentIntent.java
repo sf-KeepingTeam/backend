@@ -92,6 +92,11 @@ public class PaymentIntent {
     @Column(name = "recovery_note", length = 500)
     private String recoveryNote;
 
+    // NOTE: prod 배포 시 ALTER TABLE payment_intent ADD COLUMN retry_count INT NOT NULL DEFAULT 0;
+    @Builder.Default
+    @Column(name = "retry_count", nullable = false)
+    private int retryCount = 0;
+
     @PrePersist
     public void onCreate() {
         if (publicId == null) publicId = UUID.randomUUID();
@@ -153,6 +158,15 @@ public class PaymentIntent {
             throw new CustomException(ErrorCode.PAYMENT_STATUS_CONFLICT);
         }
         this.status = PaymentStatus.ROLLED_BACK;
+        this.recoveredAt = now;
+        this.recoveryNote = note;
+    }
+
+    public void markRecoveryFailed(LocalDateTime now, String note) {
+        if (this.status != PaymentStatus.UNCERTAIN) {
+            throw new CustomException(ErrorCode.PAYMENT_STATUS_CONFLICT);
+        }
+        this.status = PaymentStatus.RECOVERY_FAILED;
         this.recoveredAt = now;
         this.recoveryNote = note;
     }

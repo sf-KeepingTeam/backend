@@ -128,11 +128,25 @@ public class PaymentRecoveryService {
      * - DB 커넥션 고갈 방지 (외부 API 대기 중 커넥션 점유 X)
      * - 복구용 RestTemplate 사용 (10초 타임아웃, 재시도 3회)
      */
+    private static final int MAX_RETRY_COUNT = 10;
+
     public void recoverSinglePayment(PaymentIntent intent) {
         Long intentId = intent.getIntentId();
+
+        // retryCount 증가 (별도 트랜잭션)
+        int currentRetryCount = incrementRetryCount(intentId);
+
+        // 최대 재시도 초과 시 RECOVERY_FAILED로 전이하고 종료
+        if (currentRetryCount > MAX_RETRY_COUNT) {
+            markMaxRetryExceeded(intentId, currentRetryCount);
+            meterRegistry.counter(RECOVERY_COUNTER, "result", "max_retry_exceeded").increment();
+            return;
+        }
+
         String idempotencyKey = generateIdempotencyKey(intent);
 
-        log.info("결제 복구 시작: intentId={}, idempotencyKey={}", intentId, idempotencyKey);
+        log.info("결제 복구 시작: intentId={}, retryCount={}, idempotencyKey={}",
+                intentId, currentRetryCount, idempotencyKey);
 
         // Phase 1: 외부 API 호출 (트랜잭션 없음)
         RecoveryResult result = performExternalRecovery(intent, idempotencyKey);
@@ -210,10 +224,47 @@ public class PaymentRecoveryService {
                 fresh.markRolledBack(LocalDateTime.now(), result.getNote());
                 paymentIntentRepository.save(fresh);
                 log.info("복구 결과 저장 완료: intentId={}", intentId);
+            } else if (result.isPermanentFailure()) {
+                fresh.markRecoveryFailed(LocalDateTime.now(), result.getNote());
+                paymentIntentRepository.save(fresh);
+                log.error("[RECOVERY_FAILED] intentId={} - 수동 확인 필요", intentId);
             } else {
-                // 실패 시 RuntimeException → 재시도 필요
+                // 일시 실패 시 RuntimeException → 재시도 필요
                 throw new RuntimeException("복구 실패 - 재시도 필요: " + result.getNote());
             }
+        });
+    }
+
+    /**
+     * retryCount 증가 (별도 짧은 트랜잭션)
+     */
+    private int incrementRetryCount(Long intentId) {
+        return transactionTemplate.execute(status -> {
+            PaymentIntent fresh = paymentIntentRepository.findById(intentId)
+                    .orElseThrow(() -> new RuntimeException("PaymentIntent not found: " + intentId));
+            int newCount = fresh.getRetryCount() + 1;
+            fresh.setRetryCount(newCount);
+            paymentIntentRepository.save(fresh);
+            return newCount;
+        });
+    }
+
+    /**
+     * 최대 재시도 초과 시 RECOVERY_FAILED 전이
+     */
+    private void markMaxRetryExceeded(Long intentId, int retryCount) {
+        transactionTemplate.executeWithoutResult(status -> {
+            PaymentIntent fresh = paymentIntentRepository.findById(intentId)
+                    .orElseThrow(() -> new RuntimeException("PaymentIntent not found: " + intentId));
+            if (fresh.getStatus() != PaymentStatus.UNCERTAIN) {
+                log.info("이미 처리됨 - 스킵: intentId={}, status={}", intentId, fresh.getStatus());
+                return;
+            }
+            fresh.markRecoveryFailed(LocalDateTime.now(),
+                    "최대 재시도 횟수 초과 (" + retryCount + "회)");
+            paymentIntentRepository.save(fresh);
+            log.error("[MAX_RETRY_EXCEEDED] intentId={} retryCount={} - 수동 확인 필요",
+                    intentId, retryCount);
         });
     }
 
@@ -235,11 +286,15 @@ public class PaymentRecoveryService {
         }
 
         static RecoveryResult refundPermanentlyFailed(String note) {
-            return new RecoveryResult(true, note, "refund_permanent_failure");
+            return new RecoveryResult(false, note, "refund_permanent_failure");
         }
 
         boolean isSuccess() {
             return success;
+        }
+
+        boolean isPermanentFailure() {
+            return !success && "refund_permanent_failure".equals(kind);
         }
 
         String getNote() {
