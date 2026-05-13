@@ -57,7 +57,6 @@ public class SecurityConfig {
             "/favicon.ico",
             "/.well-known/**",
             "/s3/**",
-            "/ocr/*",
             "/debug/redis",
             "/swagger-ui.html",
             "/actuator/**",
