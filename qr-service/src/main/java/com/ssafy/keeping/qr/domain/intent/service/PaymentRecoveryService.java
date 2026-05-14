@@ -4,6 +4,7 @@ import com.ssafy.keeping.qr.acl.WalletClient;
 import com.ssafy.keeping.qr.acl.dto.PaymentCheckResponse;
 import com.ssafy.keeping.qr.acl.dto.RefundRequest;
 import com.ssafy.keeping.qr.acl.dto.RefundResponse;
+import com.ssafy.keeping.qr.common.alert.AlertService;
 import com.ssafy.keeping.qr.domain.intent.constant.PaymentStatus;
 import com.ssafy.keeping.qr.domain.intent.model.PaymentIntent;
 import com.ssafy.keeping.qr.domain.intent.repository.PaymentIntentRepository;
@@ -34,6 +35,7 @@ public class PaymentRecoveryService {
     private final WalletClient walletClient;
     private final TransactionTemplate transactionTemplate;
     private final MeterRegistry meterRegistry;
+    private final AlertService alertService;
 
     private static final String RECOVERY_COUNTER = "payment_recovery_attempts_total";
 
@@ -136,6 +138,11 @@ public class PaymentRecoveryService {
         // retryCount 증가 (별도 트랜잭션)
         int currentRetryCount = incrementRetryCount(intentId);
 
+        // 복구 재시도 5회 이상 경고
+        if (currentRetryCount >= 5 && intent.getStatus() == PaymentStatus.UNCERTAIN) {
+            alertService.notifyRecoveryWarning(intent, currentRetryCount);
+        }
+
         // 최대 재시도 초과 시 RECOVERY_FAILED로 전이하고 종료
         if (currentRetryCount > MAX_RETRY_COUNT) {
             markMaxRetryExceeded(intentId, currentRetryCount);
@@ -196,6 +203,8 @@ public class PaymentRecoveryService {
         } else if (refundResult != null && refundResult.isPermanent()) {
             log.error("환불 영구 실패 - 수동 확인 필요: intentId={}, message={}",
                     intent.getIntentId(), refundResult.getMessage());
+            String reason = "환불 영구 실패: " + refundResult.getMessage();
+            alertService.notifyRecoveryFailed(intent, reason);
             return RecoveryResult.refundPermanentlyFailed(
                     "영구 실패(수동 확인): " + refundResult.getMessage());
         } else {
@@ -260,11 +269,12 @@ public class PaymentRecoveryService {
                 log.info("이미 처리됨 - 스킵: intentId={}, status={}", intentId, fresh.getStatus());
                 return;
             }
-            fresh.markRecoveryFailed(LocalDateTime.now(),
-                    "최대 재시도 횟수 초과 (" + retryCount + "회)");
+            String reason = "최대 재시도 횟수 초과 (" + retryCount + "회)";
+            fresh.markRecoveryFailed(LocalDateTime.now(), reason);
             paymentIntentRepository.save(fresh);
             log.error("[MAX_RETRY_EXCEEDED] intentId={} retryCount={} - 수동 확인 필요",
                     intentId, retryCount);
+            alertService.notifyRecoveryFailed(fresh, reason);
         });
     }
 

@@ -74,6 +74,9 @@ public enum ErrorCode {
     STORE_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "매장 서비스가 일시적으로 이용 불가합니다."),
     MENU_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "메뉴 서비스가 일시적으로 이용 불가합니다."),
 
+    // 권한
+    FORBIDDEN(HttpStatus.FORBIDDEN, "해당 요청에 대한 권한이 없습니다."),
+
     // global
     BAD_REQUEST(HttpStatus.BAD_REQUEST, "올바르지 않은 요청값입니다."),
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다."),

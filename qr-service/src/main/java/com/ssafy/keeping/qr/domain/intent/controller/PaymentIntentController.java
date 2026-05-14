@@ -60,4 +60,18 @@ public class PaymentIntentController {
                 .status(HttpStatus.OK)
                 .body(ApiResponse.success("OK", HttpStatus.OK.value(), res));
     }
+
+    /**
+     * 결제 의도 취소 (고객)
+     */
+    @PostMapping("/api/payments/intent/{publicId}/cancel")
+    public ResponseEntity<ApiResponse<Void>> cancelIntent(
+            @PathVariable UUID publicId,
+            @AuthenticationPrincipal UserPrincipal principal
+    ) {
+        paymentIntentService.cancel(publicId, principal.id());
+        return ResponseEntity
+                .status(HttpStatus.OK)
+                .body(ApiResponse.success("결제 요청이 취소되었습니다.", HttpStatus.OK.value(), null));
+    }
 }

@@ -91,6 +91,10 @@ logging:
   pattern:
     level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
 
+# Slack 알림
+slack:
+  webhook-url: ${SLACK_WEBHOOK_URL:}
+
 # 로드테스트 백도어 (테스트용)
 loadtest:
   backdoor:

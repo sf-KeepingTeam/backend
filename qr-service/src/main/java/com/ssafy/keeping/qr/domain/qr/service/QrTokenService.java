@@ -8,7 +8,7 @@ import com.ssafy.keeping.qr.domain.qr.dto.QrScanResponse;
 import com.ssafy.keeping.qr.domain.qr.model.QrScanSession;
 import com.ssafy.keeping.qr.domain.qr.model.QrToken;
 import com.ssafy.keeping.qr.domain.qr.repository.QrScanSessionRepository;
-import com.ssafy.keeping.qr.domain.qr.repository.QrTokenRepository;
+import com.ssafy.keeping.qr.domain.qr.repository.QrTokenRedisRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -22,7 +22,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class QrTokenService {
 
-    private final QrTokenRepository qrTokenRepository;
+    private final QrTokenRedisRepository qrTokenRepository;
     private final QrScanSessionRepository scanSessionRepository;
 
     private static final int TTL_SECONDS = 10;
@@ -80,29 +80,25 @@ public class QrTokenService {
      * QR 토큰 삭제 (결제 완료 후)
      */
     public void deleteToken(String tokenId) {
-        qrTokenRepository.findByTokenId(tokenId)
-                .ifPresent(qrTokenRepository::delete);
+        qrTokenRepository.deleteByTokenId(tokenId);
         log.info("QR 토큰 삭제: {}", tokenId);
     }
 
     /**
      * QR 스캔 및 세션 토큰 발급
-     * 1. QR 토큰 검증 (10초 TTL)
-     * 2. QR 토큰 즉시 삭제 (재사용 방지)
-     * 3. 세션 토큰 발급 (3분 TTL)
+     * 1. GETDEL로 QR 토큰 원자적 소비 (조회 + 삭제 단일 커맨드)
+     * 2. 세션 토큰 발급 (3분 TTL)
      */
     public QrScanResponse scanAndConsumeQr(String tokenId) {
-        // 1. QR 토큰 검증
-        QrToken qrToken = qrTokenRepository.findByTokenId(tokenId)
+        // 1. GETDEL로 원자적 소비 (race condition 방지)
+        QrToken qrToken = qrTokenRepository.consumeToken(tokenId)
                 .orElseThrow(() -> new CustomException(ErrorCode.QR_NOT_FOUND));
 
         if (qrToken.isExpired()) {
             throw new CustomException(ErrorCode.QR_EXPIRED);
         }
 
-        // 2. QR 토큰 즉시 삭제 (재사용 방지)
-        qrTokenRepository.delete(qrToken);
-        log.info("QR 토큰 스캔 후 삭제: tokenId={}", tokenId);
+        log.info("QR 토큰 스캔 후 삭제(GETDEL): tokenId={}", tokenId);
 
         // 3. 세션 토큰 발급 (3분 TTL)
         String sessionToken = UUID.randomUUID().toString();

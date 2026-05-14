@@ -322,6 +322,8 @@ public class PaymentIntentService {
             throw new CustomException(ErrorCode.PAYMENT_INTENT_STATUS_CONFLICT);
         }
         if (intent.getExpiresAt() != null && now.isAfter(intent.getExpiresAt())) {
+            intent.markExpired(now);
+            intentRepository.save(intent);
             throw new CustomException(ErrorCode.PAYMENT_INTENT_EXPIRED);
         }
         if (!Objects.equals(intent.getCustomerId(), customerId)) {
@@ -331,6 +333,8 @@ public class PaymentIntentService {
         // PIN 검증 (모놀리식 서버 검사)
         boolean pinOk = customerClient.verifyPin(customerId, req.getPin());
         if (!pinOk) {
+            intent.markDeclined(now);
+            intentRepository.save(intent);
             throw new CustomException(ErrorCode.PIN_INVALID);
         }
 
@@ -344,6 +348,8 @@ public class PaymentIntentService {
         }
 
         if (!funds.isSufficient()) {
+            intent.markDeclined(now);
+            intentRepository.save(intent);
             String errorCode = funds.getErrorCode();
             if ("PAYMENT_IN_PROGRESS".equals(errorCode)) {
                 throw new CustomException(ErrorCode.PAYMENT_IN_PROGRESS);
@@ -399,6 +405,22 @@ public class PaymentIntentService {
             log.warn("결제 승인 알림 전송 실패 - 손님ID: {}, error: {}", customerId, e.getMessage());
             // 알림 실패해도 결제 승인은 성공 처리
         }
+    }
+
+    /**
+     * 결제 의도 취소
+     */
+    @Transactional
+    public void cancel(UUID publicId, Long customerId) {
+        PaymentIntent intent = intentRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new CustomException(ErrorCode.PAYMENT_INTENT_NOT_FOUND));
+
+        if (!intent.getCustomerId().equals(customerId)) {
+            throw new CustomException(ErrorCode.FORBIDDEN);
+        }
+
+        intent.markCanceled(LocalDateTime.now(clock));
+        intentRepository.save(intent);
     }
 
     /* ---------- 내부 유틸 ---------- */
