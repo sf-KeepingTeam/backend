@@ -24,9 +24,13 @@ import com.ssafy.keeping.domain.store.repository.StoreRepository;
 import com.ssafy.keeping.domain.user.customer.model.Customer;
 import com.ssafy.keeping.domain.user.customer.repository.CustomerRepository;
 import com.ssafy.keeping.domain.wallet.model.Wallet;
+import com.ssafy.keeping.domain.wallet.model.WalletLotMove;
 import com.ssafy.keeping.domain.wallet.model.WalletStoreBalance;
+import com.ssafy.keeping.domain.wallet.model.WalletStoreLot;
+import com.ssafy.keeping.domain.wallet.repository.WalletLotMoveRepository;
 import com.ssafy.keeping.domain.wallet.repository.WalletRepository;
 import com.ssafy.keeping.domain.wallet.repository.WalletStoreBalanceRepository;
+import com.ssafy.keeping.domain.wallet.repository.WalletStoreLotRepository;
 import com.ssafy.keeping.global.exception.CustomException;
 import com.ssafy.keeping.global.exception.constants.ErrorCode;
 import jakarta.persistence.LockTimeoutException;
@@ -39,6 +43,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -57,6 +62,8 @@ public class InternalWalletService {
     private final TransactionRepository transactionRepository;
     private final TransactionItemRepository transactionItemRepository;
     private final MenuRepository menuRepository;
+    private final WalletStoreLotRepository walletStoreLotRepository;
+    private final WalletLotMoveRepository walletLotMoveRepository;
     private final IdempotencyService idempotencyService;
 
     @Qualifier("canonicalObjectMapper")
@@ -245,6 +252,25 @@ public class InternalWalletService {
                     .toList();
 
             transactionItemRepository.saveAll(txItems);
+        }
+
+        // 6. FIFO LOT 차감 + WalletLotMove 기록 (환불 복원의 필수 근거)
+        LocalDateTime now = LocalDateTime.now();
+        List<WalletStoreLot> spendableLots = walletStoreLotRepository.findSpendableLots(walletId, storeId, now);
+        long lotLeft = amount;
+        for (WalletStoreLot lot : spendableLots) {
+            if (lotLeft <= 0) break;
+            long deduct = Math.min(lot.getAmountRemaining(), lotLeft);
+            if (deduct <= 0) continue;
+            int affected = walletStoreLotRepository.decrementLotIfEnough(lot.getLotId(), deduct, now);
+            if (affected > 0) {
+                walletLotMoveRepository.save(WalletLotMove.of(transaction, lot, -deduct)); // USE는 음수 delta
+                lotLeft -= deduct;
+            }
+        }
+        if (lotLeft != 0) {
+            log.warn("LOT 차감 불완전: walletId={}, storeId={}, amount={}, unmatched={}",
+                    walletId, storeId, amount, lotLeft);
         }
 
         log.info("자금 캡처 완료: walletId={}, storeId={}, amount={}, txId={}",
