@@ -14,4 +14,5 @@ public class MenuResponse {
     private Integer price;
     private boolean active;
     private boolean soldOut;
+    private long version;
 }

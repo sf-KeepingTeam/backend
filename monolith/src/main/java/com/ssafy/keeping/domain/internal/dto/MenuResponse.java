@@ -6,6 +6,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.ZoneId;
+
 @Getter
 @Builder
 @NoArgsConstructor
@@ -17,8 +19,12 @@ public class MenuResponse {
     private Integer price;
     private boolean active;
     private boolean soldOut;
+    private long version;
 
     public static MenuResponse from(Menu menu) {
+        long ver = menu.getUpdatedAt() != null
+                ? menu.getUpdatedAt().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                : 0L;
         return MenuResponse.builder()
                 .menuId(menu.getMenuId())
                 .storeId(menu.getStore() != null ? menu.getStore().getStoreId() : null)
@@ -26,6 +32,7 @@ public class MenuResponse {
                 .price(menu.getPrice())
                 .active(menu.isActive())
                 .soldOut(menu.isSoldOut())
+                .version(ver)
                 .build();
     }
 }
