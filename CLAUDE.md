@@ -7,19 +7,36 @@
 두 개의 Spring Boot 서비스 + Nginx 게이트웨이.
 
 ```
-[Client] → [Nginx :80] → ┬── monolith :8080 (대부분의 API)
-                          └── qr-service :8082 (/api/qr, /cpqr/*/initiate,
-                                                /payments/*/approve,
-                                                /api/payments/intent/*)
-              ↑↓ (내부 호출: X-Internal-Auth 헤더 필수)
+[Vercel - Next.js 프론트]
+    ↓ next.config.js rewrites로 라우팅
+    ├── /api/qr/* → Kkeeping-qr EC2 :80
+    └── /api/*   → keeping-monolith EC2 :80
+
+[EC2-1: keeping-monolith (t3.medium)]     [EC2-2: Kkeeping-qr (t3.small)]
+  Nginx(:80) + monolith(:8080)               Nginx(:80) + qr-service(:8081)
+  keeping-mysql → ssafy_fintech_db           qr-mysql → payment_service
+  keeping-redis (512mb)                      qr-redis (256mb)
+              ↑↓ (내부 호출: X-Internal-Auth 헤더 필수, Private IP 직접 통신)
         monolith ↔ qr-service (REST, Webhook)
 ```
+
+> **인프라는 서버별 완전 분리**: 각 EC2가 자체 Nginx + 자체 MySQL + 자체 Redis 컨테이너를 띄운다 (`deploy/monolith`, `deploy/qr-service` compose 기준). DB도 Redis도 **물리적으로 별개 인스턴스** — 컨테이너명도 `keeping-mysql`/`keeping-redis` vs `qr-mysql`/`qr-redis`로 분리됨.
+
+> **배포 환경**: Vercel(프론트) + EC2 **2대**(백엔드)
+> - `keeping-monolith` (t3.medium): monolith + Nginx (내부)
+> - `Kkeeping-qr` (t3.small): qr-service + Nginx (내부)
+> - 별도 독립 Nginx 게이트웨이 서버 없음 — Vercel rewrites가 프론트→백엔드 라우팅 담당
+>
+> 두 EC2는 AWS VPC 내 Private IP로 직접 통신 (qr → monolith:8080, monolith → qr:8081).
+> Nginx는 포트 80 외부 트래픽에 대해서만 `/internal/*` 차단 — EC2 간 직접 포트 통신은 **AWS Security Group**이 보호.
+> 각 EC2의 8080/8081 인바운드는 상대 EC2의 Private IP(/32)만 허용해야 함.
 
 - **monolith** (`monolith/src/main/java/com/ssafy/keeping/`): 인증, 회원, 매장/메뉴, 선결제, 지갑, 알림, 통계, OCR, 정산
 - **qr-service** (`qr-service/src/main/java/com/ssafy/keeping/qr/`): QR 토큰 발급, CPQR 결제 의도 생성/승인, 결제 복구 스케줄러
 - **Nginx** (`gateway/nginx.conf`): API Gateway 역할 — 경로 기반 라우팅, `/internal/*` 외부 차단, 인증이 필요 없는 경로(`/auth/login`, `/oauth2`, `/login/oauth2`, `/api/loadtest`) 분기.
   - **주의**: 현재 conf는 `listen 80`만 있고 TLS 종료 없음. HTTPS는 상위 LB/ALB에서 처리하는 구조로 보임.
-- **공유 DB (컨테이너 기준)**: 하나의 MySQL 인스턴스에 두 서비스가 각기 다른 논리 DB(`keeping` / `payment_service`)로 접속. Redis도 공유.
+- **DB/Redis는 서비스별 독립 (공유 아님)**: 실제 2-EC2 배포(`deploy/*`)에서는 monolith가 `keeping-mysql`(DB `ssafy_fintech_db`)+`keeping-redis`, qr-service가 `qr-mysql`(DB `payment_service`)+`qr-redis`를 각각 **별도 인스턴스**로 사용한다. 두 서비스 간 데이터 동기화는 공유 저장소가 아니라 **REST/Webhook(HTTP) + `X-Internal-Auth`** 로만 이뤄진다 (예: monolith의 Store/Menu 변경이 webhook으로 qr에 전달되어 qr가 자기 `qr-redis` 캐시에 저장). 
+  - **주의**: `docker-compose.msa.yml`은 단일 호스트에 MySQL 1대(논리 DB 2개)+Redis 1대를 띄우는 **로컬·테스트용 올인원** 구성이며, 프로덕션 토폴로지가 아니다. "공유 DB/Redis"는 이 msa compose 한정 얘기일 뿐 실제 배포와 다르다. 따라서 **두 서비스 간 공유 트랜잭션·공유 Redis 락은 존재하지 않는다** — 정합성은 전적으로 멱등성·보상(복구) 설계에 의존.
 
 ## 기술 스택
 
@@ -66,7 +83,7 @@ docker compose -f docker-compose.msa.yml up -d   # qr-service는 compose에서 �
 
 - Nginx: `http://localhost:80`
 - monolith 내부: `8080` (compose에서는 테스트용으로 외부 노출됨)
-- qr-service 내부: `8082` (expose만, 외부 노출 없음)
+- qr-service 내부: `8081` (expose만, 외부 노출 없음)
 - MySQL 외부: `3307` → 컨테이너 `3306`
 - Redis 외부: `6379`
 
@@ -88,7 +105,7 @@ docker compose -f docker-compose.msa.yml up -d   # qr-service는 compose에서 �
 | `CLOVA_OCR_URL` / `CLOVA_OCR_SECRET` / `CLOVA_TEMPLATE_IDS` | △ | 사업자등록증 OCR 사용 시 |
 | `OPENAI_API_KEY` / `OPENAI_API_URL` / `OPENAI_MODEL` | △ | 메뉴판 OCR 사용 시 |
 | `FE_BASE_URL` | ○ | 프론트 URL (OAuth 콜백 리다이렉트 등) |
-| `QR_SERVICE_URL` | prod | monolith → qr-service URL (docker 기본 `http://qr-service:8082`) |
+| `QR_SERVICE_URL` | prod | monolith → qr-service URL. **⚠️ 버그**: `application-prod.yml` 기본값이 `http://qr-service:8082`인데 qr-service는 실제 **8081**에서 listen하고, 2-EC2 배포에서 호스트명 `qr-service`는 monolith 쪽에서 resolve도 안 됨. `deploy/monolith` compose·`.env.example`엔 이 변수가 **누락**되어 있어 기본값(틀린 값)으로 떨어진다 → monolith→qr webhook(Store/Menu 캐시 동기화) 전부 실패. 배포 시 `http://<qr EC2 Private IP>:8081`로 반드시 설정할 것 |
 | `QR_WEBHOOK_ENABLED` | prod | Store/Menu 변경 webhook 발송 on/off (기본 true) |
 | `CACHE_MODE` | qr | `NONE`/`CACHE_ASIDE`/`WRITE_THROUGH` (기본 `WRITE_THROUGH`) |
 | `CACHE_WARMING_ENABLED` | qr | 시작 시 Store/Menu 전량 프리로드 (기본 true) |
@@ -161,7 +178,7 @@ backend/
 │   │   └── static/
 │   ├── build.gradle, settings.gradle, Dockerfile, gradlew
 │   └── .dockerignore
-├── qr-service/                          (Spring Boot app, 포트 8082 — 독립 Gradle 프로젝트)
+├── qr-service/                          (Spring Boot app, 포트 8081 — 독립 Gradle 프로젝트)
 │   ├── src/main/java/com/ssafy/keeping/qr/   (acl / common / config / domain / loadtest / security)
 │   └── build.gradle, settings.gradle, Dockerfile, gradlew
 ├── gateway/nginx.conf                   (리버스 프록시)
