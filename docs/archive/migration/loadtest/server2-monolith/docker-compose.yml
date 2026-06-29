@@ -2,12 +2,12 @@ version: '3.8'
 
 services:
   monolith:
-    image: ${DOCKER_USERNAME}/keeping-monolith:latest
-    container_name: keeping-monolith
+    image: keeping-monolith:latest
+    container_name: loadtest-monolith
     ports:
       - "8080:8080"
     environment:
-      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_PROFILES_ACTIVE=loadtest
       - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/ssafy_fintech_db?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true
       - SPRING_DATASOURCE_USERNAME=root
       - SPRING_DATASOURCE_PASSWORD=${MYSQL_ROOT_PASSWORD}
@@ -15,10 +15,8 @@ services:
       - SPRING_DATA_REDIS_PORT=6379
       - JWT_SECRET=${JWT_SECRET}
       - INTERNAL_AUTH_TOKEN=${INTERNAL_AUTH_TOKEN}
-      - FE_BASE_URL=${FE_BASE_URL:-http://localhost:3030}
-      # qr-service는 다른 EC2. 반드시 qr EC2 Private IP:8081로 설정 (미설정 시 캐시 동기화 깨짐)
-      - QR_SERVICE_URL=${QR_SERVICE_URL}
-      - QR_WEBHOOK_ENABLED=${QR_WEBHOOK_ENABLED:-true}
+      # QR 서비스 주소 (Webhook Push용)
+      - QR_SERVICE_URL=http://${QR_SERVER_IP}:8082
     depends_on:
       mysql:
         condition: service_healthy
@@ -31,37 +29,30 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
-    networks:
-      - keeping-network
 
   mysql:
     image: mysql:8.0
-    container_name: keeping-mysql
-    volumes:
-      - mysql_data:/var/lib/mysql
+    container_name: loadtest-monolith-mysql
+    ports:
+      - "3306:3306"
     environment:
       - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
       - MYSQL_DATABASE=ssafy_fintech_db
       - MYSQL_CHARACTER_SET_SERVER=utf8mb4
       - MYSQL_COLLATION_SERVER=utf8mb4_unicode_ci
-    ports:
-      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
-    networks:
-      - keeping-network
 
   redis:
     image: redis:7-alpine
-    container_name: keeping-redis
-    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
-    volumes:
-      - redis_data:/data
+    container_name: loadtest-monolith-redis
     ports:
       - "6379:6379"
     restart: unless-stopped
@@ -70,13 +61,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - keeping-network
 
 volumes:
   mysql_data:
-  redis_data:
-
-networks:
-  keeping-network:
-    driver: bridge

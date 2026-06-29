@@ -1,6 +1,7 @@
 package com.ssafy.keeping.domain.auth.security.filter;
 
 import com.ssafy.keeping.domain.auth.enums.UserRole;
+import com.ssafy.keeping.domain.auth.security.principal.UserPrincipal;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -40,9 +41,11 @@ public class LoadTestAuthenticationFilter extends OncePerRequestFilter {
             Long userId = Long.parseLong(userIdHeader);
             UserRole role = UserRole.valueOf(roleHeader.toUpperCase());
 
-            // Authentication 생성 (테스트 코드 패턴을 따라 Long을 principal로 설정)
+            // 컨트롤러가 @AuthenticationPrincipal UserPrincipal 을 기대하므로,
+            // 실제 JwtAuthenticationFilter와 동일하게 UserPrincipal을 principal로 설정한다.
+            UserPrincipal principal = new UserPrincipal(userId, role);
             var auth = new UsernamePasswordAuthenticationToken(
-                    userId,
+                    principal,
                     null,
                     List.of(new SimpleGrantedAuthority("ROLE_" + role.name()))
             );

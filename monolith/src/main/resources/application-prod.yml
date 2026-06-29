@@ -41,7 +41,7 @@ fe:
 
 # QR Service 연동 설정
 qr-service:
-  url: ${QR_SERVICE_URL:http://qr-service:8082}
+  url: ${QR_SERVICE_URL:http://qr-service:8081}   # qr-service는 8081에서 listen (8082는 오기였음). 2-EC2 배포에서는 QR_SERVICE_URL을 qr EC2 Private IP로 반드시 오버라이드
   webhook:
     enabled: ${QR_WEBHOOK_ENABLED:true}
 
