@@ -1,5 +1,6 @@
 package com.ssafy.keeping.domain.payment.transactions.model;
 
+import com.ssafy.keeping.domain.charge.constant.RefundStatus;
 import com.ssafy.keeping.domain.user.customer.model.Customer;
 import com.ssafy.keeping.domain.payment.transactions.constant.TransactionType;
 import com.ssafy.keeping.domain.store.model.Store;
@@ -46,7 +47,7 @@ public class Transaction {
     @Column(name = "amount", nullable = false)
     private Long amount;
 
-    @Column(name = "transaction_unique_no", length = 50)
+    @Column(name = "transaction_unique_no", length = 200)
     private String transactionUniqueNo;
 
     @CreationTimestamp
@@ -57,5 +58,10 @@ public class Transaction {
     @JoinColumn(name = "ref_tx_id",
             foreignKey = @ForeignKey(name = "fk_tx_ref_tx"))
     private Transaction refTransaction;   // null: 일반거래, not null: CANCEL_*가 참조하는 부모
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "refund_status")
+    @lombok.Setter
+    private RefundStatus refundStatus;
 
 }
