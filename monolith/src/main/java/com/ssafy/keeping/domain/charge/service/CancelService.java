@@ -1,18 +1,13 @@
 package com.ssafy.keeping.domain.charge.service;
 
+import com.ssafy.keeping.domain.charge.constant.RefundStatus;
+import com.ssafy.keeping.domain.charge.dto.CancelReclaimResult;
 import com.ssafy.keeping.domain.charge.dto.request.CancelRequestDto;
 import com.ssafy.keeping.domain.charge.dto.response.CancelListResponseDto;
 import com.ssafy.keeping.domain.charge.dto.response.CancelResponseDto;
 import com.ssafy.keeping.domain.payment.toss.TossPaymentClient;
 import com.ssafy.keeping.domain.payment.toss.dto.TossCancelRequest;
 import com.ssafy.keeping.domain.payment.toss.dto.TossCancelResponse;
-import com.ssafy.keeping.domain.payment.transactions.constant.TransactionType;
-import com.ssafy.keeping.domain.payment.transactions.model.Transaction;
-import com.ssafy.keeping.domain.payment.transactions.repository.TransactionRepository;
-import com.ssafy.keeping.domain.wallet.model.WalletStoreBalance;
-import com.ssafy.keeping.domain.wallet.model.WalletStoreLot;
-import com.ssafy.keeping.domain.wallet.repository.WalletStoreBalanceRepository;
-import com.ssafy.keeping.domain.wallet.repository.WalletStoreLotRepository;
 import com.ssafy.keeping.domain.user.customer.model.Customer;
 import com.ssafy.keeping.domain.user.customer.repository.CustomerRepository;
 import com.ssafy.keeping.global.exception.CustomException;
@@ -24,28 +19,25 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
-
 /**
- * 선결제 취소 서비스 - 간소화 버전
- * SettlementTask 의존성 제거
+ * 선결제 취소 서비스 — Saga 오케스트레이터.
+ * <p>
+ * Phase A (CancelReclaimService, @Transactional): 로컬 포인트 회수 + cancel TX 저장
+ * Phase B (이 클래스, 트랜잭션 밖): 토스 환불 호출 + 멱등키 재시도
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@Transactional(readOnly = true)
 public class CancelService {
 
-    private final CustomerRepository customerRepository;
-    private final TransactionRepository transactionRepository;
-    private final WalletStoreLotRepository walletStoreLotRepository;
-    private final WalletStoreBalanceRepository walletStoreBalanceRepository;
-    private final TossPaymentClient tossPaymentClient;
+    private static final int MAX_TOSS_RETRY = 3;
+    private static final long RETRY_BACKOFF_MS = 200;
 
-    /**
-     * 취소 가능한 거래 목록 조회 (페이지네이션)
-     * 간소화: 일단 비활성화 (나중에 필요시 구현)
-     */
+    private final CustomerRepository customerRepository;
+    private final TossPaymentClient tossPaymentClient;
+    private final CancelReclaimService cancelReclaimService;
+
+    @Transactional(readOnly = true)
     public Page<CancelListResponseDto> getCancelableTransactions(Long customerId, Pageable pageable) {
         Customer customer = customerRepository.findById(customerId)
                 .orElseThrow(() -> new CustomException(ErrorCode.CUSTOMER_NOT_FOUND));
@@ -56,144 +48,125 @@ public class CancelService {
     }
 
     /**
-     * 결제 취소 처리 - 간소화 버전
+     * 결제 취소 처리 — Saga (비-트랜잭션).
+     * Phase A: 로컬 포인트 회수 (별도 빈, TX)
+     * Phase B: 토스 환불 (TX 밖, 멱등키 재시도)
      */
-    @Transactional
     public CancelResponseDto cancelPayment(Long customerId, CancelRequestDto requestDto) {
-        String paymentKey = resolvePaymentKey(requestDto);
+        // ── Phase A: 로컬 포인트 회수 (트랜잭션 내, 외부 호출 0) ──
+        CancelReclaimResult reclaimResult = cancelReclaimService.reclaimPoints(customerId, requestDto);
 
-        log.info("[취소] 시작 - 고객ID: {}, paymentKey: {}", customerId, paymentKey);
+        log.info("[취소-PhaseB] 시작 - 토스 환불 호출, paymentKey: {}", reclaimResult.getPaymentKey());
 
-        // 1. 거래 조회 및 검증
-        Transaction originalTransaction = validateCancellation(customerId, paymentKey);
-
-        // 2. 토스페이먼츠 취소 API 호출
+        // ── Phase B: 토스 환불 (트랜잭션 밖, 멱등키 기반 재시도) ──
         TossCancelRequest tossCancelRequest = TossCancelRequest.builder()
                 .cancelReason(requestDto.getCancelReason())
                 .cancelAmount(requestDto.getCancelAmount() != null
                         ? requestDto.getCancelAmount()
-                        : originalTransaction.getAmount())
+                        : reclaimResult.getCancelAmount())
                 .build();
 
-        log.info("[취소] 토스 API 호출 - paymentKey: {}, cancelAmount: {}",
-                paymentKey, tossCancelRequest.getCancelAmount());
+        RefundStatus finalStatus = RefundStatus.REFUND_PENDING;
+        Exception lastException = null;
 
-        TossCancelResponse tossResponse = tossPaymentClient.cancelPayment(
-                paymentKey, tossCancelRequest);
+        for (int attempt = 1; attempt <= MAX_TOSS_RETRY; attempt++) {
+            try {
+                TossCancelResponse tossResponse = tossPaymentClient.cancelPayment(
+                        reclaimResult.getPaymentKey(), tossCancelRequest);
 
-        if (!tossResponse.isSuccess()) {
-            log.error("[취소] 토스 취소 실패 - code: {}, message: {}",
-                    tossResponse.getCode(), tossResponse.getMessage());
-            throw new CustomException(ErrorCode.PAYMENT_CANCEL_FAILED);
+                if (tossResponse.isSuccess() || isAlreadyDone(tossResponse)) {
+                    // 성공 또는 "이미 취소됨"(= 돈은 이미 환불됨) → REFUND_DONE
+                    finalStatus = RefundStatus.REFUND_DONE;
+                    cancelReclaimService.updateRefundStatus(
+                            reclaimResult.getCancelTransactionId(), RefundStatus.REFUND_DONE);
+                    log.info("[취소-PhaseB] 토스 환불 성공 - paymentKey: {}, attempt: {}, code: {}",
+                            reclaimResult.getPaymentKey(), attempt, tossResponse.getCode());
+                    break;
+                }
+
+                // 실패 응답 수신 — 에러 분류
+                if (isPermanentFailure(tossResponse)) {
+                    // 영구 실패 (환불 불가 등)
+                    finalStatus = RefundStatus.REFUND_PERMANENT_FAILED;
+                    cancelReclaimService.updateRefundStatus(
+                            reclaimResult.getCancelTransactionId(), RefundStatus.REFUND_PERMANENT_FAILED);
+                    log.error("[취소-PhaseB] 토스 환불 영구 실패 - code: {}, message: {}, paymentKey: {}",
+                            tossResponse.getCode(), tossResponse.getMessage(), reclaimResult.getPaymentKey());
+                    break;
+                }
+
+                // 일시 실패 → 재시도
+                log.warn("[취소-PhaseB] 토스 환불 일시 실패 (attempt {}/{}) - code: {}, message: {}",
+                        attempt, MAX_TOSS_RETRY, tossResponse.getCode(), tossResponse.getMessage());
+
+            } catch (Exception e) {
+                // 네트워크 타임아웃, 연결 실패 등 → 재시도
+                lastException = e;
+                log.warn("[취소-PhaseB] 토스 환불 예외 (attempt {}/{}) - {}",
+                        attempt, MAX_TOSS_RETRY, e.getMessage());
+            }
+
+            // 마지막 시도가 아니면 backoff 후 재시도
+            if (attempt < MAX_TOSS_RETRY) {
+                try {
+                    Thread.sleep(RETRY_BACKOFF_MS * attempt);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
         }
 
-        log.info("[취소] 토스 취소 성공 - paymentKey: {}", tossResponse.getPaymentKey());
+        // ── 응답 분기: refund 상태에 따라 다른 응답 ──
+        if (finalStatus == RefundStatus.REFUND_DONE) {
+            return CancelResponseDto.builder()
+                    .cancelTransactionId(reclaimResult.getCancelTransactionId())
+                    .transactionUniqueNo(reclaimResult.getTransactionUniqueNo())
+                    .cancelAmount(reclaimResult.getCancelAmount())
+                    .cancelTime(reclaimResult.getCancelTime())
+                    .remainingBalance(reclaimResult.getRemainingBalance())
+                    .build();
+        }
 
-        // 3. DB 반영 (포인트 차감)
-        return saveCancelAndRefundPoints(originalTransaction, tossResponse);
+        if (finalStatus == RefundStatus.REFUND_PERMANENT_FAILED) {
+            log.error("[취소-PhaseB] 포인트 회수 완료됐으나 토스 환불 영구 실패 - paymentKey: {}, 수동 확인 필요",
+                    reclaimResult.getPaymentKey());
+            throw new CustomException(ErrorCode.REFUND_FAILED_NEEDS_SUPPORT);
+        }
+
+        // REFUND_PENDING — 일시 실패로 재시도 소진
+        log.error("[취소-PhaseB] 토스 환불 {}회 재시도 실패 - paymentKey: {}, REFUND_PENDING 유지. " +
+                        "forward recovery 필요. lastException: {}",
+                MAX_TOSS_RETRY, reclaimResult.getPaymentKey(),
+                lastException != null ? lastException.getMessage() : "N/A");
+        // TODO: @Scheduled 복구 잡으로 REFUND_PENDING 건 주기적 재시도 (forward recovery)
+        throw new CustomException(ErrorCode.REFUND_PENDING);
     }
 
     /**
-     * paymentKey 확인
+     * "이미 취소됨" 판정 — 돈이 이미 환불된 상태이므로 성공(REFUND_DONE)으로 처리해야 한다.
+     * 이를 영구실패로 처리하면 운영자 재환불 → 이중환불 위험.
      */
-    private String resolvePaymentKey(CancelRequestDto requestDto) {
-        if (requestDto.getPaymentKey() != null && !requestDto.getPaymentKey().isBlank()) {
-            return requestDto.getPaymentKey();
-        }
-        if (requestDto.getTransactionUniqueNo() != null && !requestDto.getTransactionUniqueNo().isBlank()) {
-            return requestDto.getTransactionUniqueNo();
-        }
-        throw new CustomException(ErrorCode.INVALID_REQUEST);
+    private boolean isAlreadyDone(TossCancelResponse response) {
+        String code = response.getCode();
+        return code != null
+                && (code.startsWith("ALREADY_CANCELED") || code.contains("ALREADY_PROCESSED"));
     }
 
     /**
-     * 취소 가능 검증 - 비관적 락 적용
+     * 토스 에러 코드 기반 영구 실패 판정.
+     * 영구 실패 = 재시도해도 결과가 바뀌지 않는 에러 (4xx 계열).
+     * 주의: ALREADY_CANCELED는 여기가 아니라 isAlreadyDone()에서 성공으로 처리.
      */
-    private Transaction validateCancellation(Long customerId, String paymentKey) {
-        // 1. 거래 조회
-        Transaction originalTransaction = transactionRepository
-                .findByTransactionUniqueNo(paymentKey)
-                .orElseThrow(() -> new CustomException(ErrorCode.TRANSACTION_NOT_FOUND));
-
-        // 2. 본인 거래 확인
-        if (!originalTransaction.getCustomer().getCustomerId().equals(customerId)) {
-            throw new CustomException(ErrorCode.UNAUTHORIZED_ACCESS);
+    private boolean isPermanentFailure(TossCancelResponse response) {
+        String code = response.getCode();
+        if (code == null) {
+            return false;
         }
-
-        // 3. 이미 취소된 거래인지 확인
-        if (originalTransaction.getRefTransaction() != null) {
-            throw new CustomException(ErrorCode.CANCEL_NOT_AVAILABLE);
-        }
-
-        // 4. 포인트가 모두 남아있는지 확인 (🔒 비관적 락)
-        WalletStoreLot lot = walletStoreLotRepository
-                .findByOriginChargeTransactionWithLock(originalTransaction)
-                .orElseThrow(() -> new CustomException(ErrorCode.WALLET_NOT_FOUND));
-
-        if (!lot.getAmountRemaining().equals(lot.getAmountTotal())) {
-            log.warn("[취소] 불가 - 포인트 일부 사용됨. 총: {}, 잔여: {}",
-                    lot.getAmountTotal(), lot.getAmountRemaining());
-            throw new CustomException(ErrorCode.CANCEL_NOT_AVAILABLE);
-        }
-
-        log.info("[취소] 검증 완료 (락 획득) - 거래ID: {}, 금액: {}",
-                originalTransaction.getTransactionId(), originalTransaction.getAmount());
-
-        return originalTransaction;
+        return code.startsWith("NOT_CANCELABLE")
+                || code.startsWith("INVALID_REQUEST")
+                || code.startsWith("FORBIDDEN")
+                || code.startsWith("NOT_FOUND")
+                || code.equals("FORCE_FAIL");
     }
-
-    /**
-     * 취소 후 DB 업데이트 - 간소화 버전
-     */
-    private CancelResponseDto saveCancelAndRefundPoints(
-            Transaction originalTransaction,
-            TossCancelResponse tossResponse) {
-
-        LocalDateTime now = LocalDateTime.now();
-
-        // 1. 취소 Transaction 생성
-        Transaction cancelTransaction = Transaction.builder()
-                .wallet(originalTransaction.getWallet())
-                .customer(originalTransaction.getCustomer())
-                .store(originalTransaction.getStore())
-                .transactionType(TransactionType.CANCEL_CHARGE)
-                .amount(originalTransaction.getAmount())
-                .transactionUniqueNo(originalTransaction.getTransactionUniqueNo())
-                .refTransaction(originalTransaction)
-                .build();
-        cancelTransaction = transactionRepository.save(cancelTransaction);
-
-        // 2. WalletStoreLot 취소 처리
-        WalletStoreLot lot = walletStoreLotRepository
-                .findByOriginChargeTransaction(originalTransaction)
-                .orElseThrow(() -> new CustomException(ErrorCode.WALLET_NOT_FOUND));
-
-        lot.setAmountRemaining(0L);
-        lot.setCancelTransaction(cancelTransaction);
-        lot.setCanceledAt(now);
-        lot.markAsCanceled();
-
-        // 3. WalletStoreBalance 차감
-        WalletStoreBalance balance = walletStoreBalanceRepository
-                .findByWalletAndStore(originalTransaction.getWallet(), originalTransaction.getStore())
-                .orElseThrow(() -> new CustomException(ErrorCode.WALLET_NOT_FOUND));
-
-        balance.subtractBalance(lot.getAmountTotal());
-
-        log.info("[취소] 완료 - 고객ID: {}, 원금: {}원, 보너스: {}원, 총회수: {}P",
-                originalTransaction.getCustomer().getCustomerId(),
-                originalTransaction.getAmount(),
-                lot.getAmountTotal() - originalTransaction.getAmount(),
-                lot.getAmountTotal());
-
-        // 4. 응답 생성
-        return CancelResponseDto.builder()
-                .cancelTransactionId(cancelTransaction.getTransactionId())
-                .transactionUniqueNo(originalTransaction.getTransactionUniqueNo())
-                .cancelAmount(originalTransaction.getAmount())
-                .cancelTime(now)
-                .remainingBalance(balance.getBalance())
-                .build();
-    }
-
 }
