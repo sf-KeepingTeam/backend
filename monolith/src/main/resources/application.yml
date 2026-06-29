@@ -63,6 +63,7 @@ logging:
 payment:
   provider: toss  # 기본 결제 제공자 (toss, kakao, naver 등)
   toss:
+    mode: ${TOSS_MODE:stub}   # stub(기본, 로컬/테스트) | real(실제 토스 API 호출)
     secret-key: ${TOSS_SECRET_KEY:test_sk_Gv6LjeKD8aBnMEWAZA0Y3wYxAdXy}  # 테스트 시크릿 키
     base-url: https://api.tosspayments.com
     connect-timeout: 5000
