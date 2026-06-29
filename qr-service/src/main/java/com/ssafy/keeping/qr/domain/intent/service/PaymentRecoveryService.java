@@ -12,6 +12,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -42,20 +43,18 @@ public class PaymentRecoveryService {
     /** 복구 대상 존재 플래그 */
     private final AtomicBoolean hasRecoveryTarget = new AtomicBoolean(false);
 
-    /** 중복 실행 방지 락 */
-    private final AtomicBoolean isRecovering = new AtomicBoolean(false);
-
     /** 복구 대상 조회 범위 (최근 7일) */
     private static final int RECOVERY_DAYS = 7;
 
     /**
-     * 서버 시작 시 복구 수행
+     * 서버 시작 시 복구 플래그 설정.
+     * 실제 복구는 다음 @Scheduled 주기에서 ShedLock 분산락 하에 실행된다.
+     * (self-invocation은 @SchedulerLock 프록시를 우회하므로 직접 호출 금지)
      */
     @PostConstruct
     public void recoverOnStartup() {
-        log.info("서버 시작 - 결제 복구 확인 시작");
+        log.info("서버 시작 - 복구 대상 플래그 설정 (다음 @Scheduled 주기에서 실행)");
         hasRecoveryTarget.set(true);
-        recoverPeriodically();
     }
 
     /**
@@ -68,24 +67,19 @@ public class PaymentRecoveryService {
 
     /**
      * 주기적 복구 (10초 간격)
-     * hasRecoveryTarget 플래그가 true일 때만 실제 복구 수행
+     * ShedLock 분산락으로 다중 인스턴스 중복 실행 방지.
+     * hasRecoveryTarget 플래그가 true일 때만 실제 복구 수행 (로컬 최적화).
      */
     @Scheduled(fixedRate = 10000)
+    @SchedulerLock(name = "paymentRecovery",
+                   lockAtMostFor = "PT5M",
+                   lockAtLeastFor = "PT1S")
     public void recoverPeriodically() {
         if (!hasRecoveryTarget.get()) {
             return;
         }
 
-        if (!isRecovering.compareAndSet(false, true)) {
-            log.debug("이미 복구 작업 진행 중 - 스킵");
-            return;
-        }
-
-        try {
-            doRecover();
-        } finally {
-            isRecovering.set(false);
-        }
+        doRecover();
     }
 
     /**
@@ -128,7 +122,7 @@ public class PaymentRecoveryService {
      *
      * 이점:
      * - DB 커넥션 고갈 방지 (외부 API 대기 중 커넥션 점유 X)
-     * - 복구용 RestTemplate 사용 (10초 타임아웃, 재시도 3회)
+     * - 복구용 RestClient 사용 (10초 타임아웃, 재시도 3회)
      */
     private static final int MAX_RETRY_COUNT = 10;
 
