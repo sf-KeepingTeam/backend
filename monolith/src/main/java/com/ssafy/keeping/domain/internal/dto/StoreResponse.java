@@ -6,6 +6,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.ZoneId;
+
 @Getter
 @Builder
 @NoArgsConstructor
@@ -17,8 +19,12 @@ public class StoreResponse {
     private String taxIdNumber;
     private String address;
     private boolean isActive;
+    private long version;
 
     public static StoreResponse from(Store store) {
+        long ver = store.getUpdatedAt() != null
+                ? store.getUpdatedAt().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                : 0L;
         return StoreResponse.builder()
                 .storeId(store.getStoreId())
                 .storeName(store.getStoreName())
@@ -26,6 +32,7 @@ public class StoreResponse {
                 .taxIdNumber(store.getTaxIdNumber())
                 .address(store.getAddress())
                 .isActive(true)
+                .version(ver)
                 .build();
     }
 }

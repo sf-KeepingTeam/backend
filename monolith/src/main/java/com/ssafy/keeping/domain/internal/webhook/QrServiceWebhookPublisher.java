@@ -60,10 +60,11 @@ public class QrServiceWebhookPublisher {
         StoreResponse payload = StoreResponse.from(store);
 
         HttpHeaders headers = createHeaders();
+        headers.set(HttpHeaderConstants.X_CACHE_VERSION, String.valueOf(payload.getVersion()));
         HttpEntity<StoreResponse> request = new HttpEntity<>(payload, headers);
 
         restTemplate.postForEntity(url, request, Void.class);
-        log.info("Store 캐시 Push 완료: storeId={}", store.getStoreId());
+        log.info("Store 캐시 Push 완료: storeId={}, version={}", store.getStoreId(), payload.getVersion());
     }
 
     @Recover
@@ -89,12 +90,14 @@ public class QrServiceWebhookPublisher {
         }
 
         String url = qrServiceUrl + "/internal/cache/stores/" + storeId;
+        long deleteVersion = System.currentTimeMillis();
 
         HttpHeaders headers = createHeaders();
+        headers.set(HttpHeaderConstants.X_CACHE_VERSION, String.valueOf(deleteVersion));
         HttpEntity<Void> request = new HttpEntity<>(headers);
 
         restTemplate.postForEntity(url, request, Void.class);
-        log.info("Store 캐시 삭제 Push 완료: storeId={}", storeId);
+        log.info("Store 캐시 삭제 Push 완료: storeId={}, version={}", storeId, deleteVersion);
     }
 
     @Recover
@@ -123,10 +126,11 @@ public class QrServiceWebhookPublisher {
         MenuResponse payload = MenuResponse.from(menu);
 
         HttpHeaders headers = createHeaders();
+        headers.set(HttpHeaderConstants.X_CACHE_VERSION, String.valueOf(payload.getVersion()));
         HttpEntity<MenuResponse> request = new HttpEntity<>(payload, headers);
 
         restTemplate.postForEntity(url, request, Void.class);
-        log.info("Menu 캐시 Push 완료: menuId={}", menu.getMenuId());
+        log.info("Menu 캐시 Push 완료: menuId={}, version={}", menu.getMenuId(), payload.getVersion());
     }
 
     @Recover
@@ -152,12 +156,14 @@ public class QrServiceWebhookPublisher {
         }
 
         String url = qrServiceUrl + "/internal/cache/menus/" + menuId;
+        long deleteVersion = System.currentTimeMillis();
 
         HttpHeaders headers = createHeaders();
+        headers.set(HttpHeaderConstants.X_CACHE_VERSION, String.valueOf(deleteVersion));
         HttpEntity<Void> request = new HttpEntity<>(headers);
 
         restTemplate.postForEntity(url, request, Void.class);
-        log.info("Menu 캐시 삭제 Push 완료: menuId={}", menuId);
+        log.info("Menu 캐시 삭제 Push 완료: menuId={}, version={}", menuId, deleteVersion);
     }
 
     @Recover

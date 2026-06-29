@@ -14,4 +14,5 @@ public class StoreResponse {
     private String taxIdNumber;
     private String address;
     private boolean isActive;
+    private long version;
 }
