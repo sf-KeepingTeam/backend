@@ -113,6 +113,36 @@ rest-template-recovery:
   connect-timeout: 5000   # 5초
   read-timeout: 10000     # 10초 (복구는 여유있게)
 
+# 커넥션 풀 (Apache HttpClient5) — 용도별 벌크헤드
+rest-template-pool:
+  enabled: true                          # false → 풀 없는 SimpleClientHttpRequestFactory 폴백 (A/B 비교)
+  # 읽기 풀 (restTemplate — StoreClient, MenuClient, CustomerClient 등)
+  read:
+    max-per-route: 50
+    max-total: 60
+    connection-request-timeout: 2000     # 풀에서 연결 대기 한도 (ms)
+  # 쓰기 풀 (writeRestTemplate — WalletClient capture/release/refund)
+  write:
+    max-per-route: 30
+    max-total: 30
+    connection-request-timeout: 500      # Fail-Fast
+  # 복구 풀 (recoveryRestTemplate — PaymentRecoveryService)
+  recovery:
+    max-per-route: 10
+    max-total: 10
+    connection-request-timeout: 2000
+  # Slack webhook 전용 (외부 호스트 격리)
+  slack:
+    connect-timeout: 2000
+    read-timeout: 3000
+    max-per-route: 5
+    max-total: 5
+    connection-request-timeout: 500
+  # 공통
+  validate-after-inactivity: 5000        # 유휴 후 연결 유효성 검사 (ms)
+  evict-idle: 30000                      # 유휴 연결 제거 주기 (ms)
+  time-to-live: 300000                   # 연결 최대 수명 (ms, 5분)
+
 # Resilience4j 설정
 resilience4j:
   circuitbreaker:

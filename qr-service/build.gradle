@@ -62,6 +62,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'io.micrometer:micrometer-registry-prometheus'
 
+    // Apache HttpClient5 (커넥션 풀)
+    implementation 'org.apache.httpcomponents.client5:httpclient5'
+
     // Resilience4j (Circuit Breaker + Retry)
     implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.2.0'
     implementation 'org.springframework.boot:spring-boot-starter-aop'
@@ -83,3 +86,29 @@ dependencies {
 tasks.named('test') {
     useJUnitPlatform()
 }
+
+// ===== 커넥션 풀 부하테스트 (src/test의 loadtest 패키지) =====
+// 사용 예:
+//   ./gradlew loadStub  -PappArgs="8080"
+//   ./gradlew loadBench -PappArgs="http://localhost:8080/internal/stores/1 nopool 200 30"
+//   ./gradlew loadBench -PappArgs="http://localhost:8080/internal/stores/1 pooled 200 30"
+tasks.register('loadStub', JavaExec) {
+    group = 'loadtest'
+    description = 'monolith 역할 스텁 서버 실행 (DB 불필요)'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.ssafy.keeping.qr.loadtest.StubMonolith'
+    if (project.hasProperty('appArgs')) {
+        args(((String) project.property('appArgs')).split('\\s+'))
+    }
+}
+
+tasks.register('loadBench', JavaExec) {
+    group = 'loadtest'
+    description = '풀 ON(pooled)/OFF(nopool) 부하 벤치마크'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.ssafy.keeping.qr.loadtest.PoolBenchmark'
+    if (project.hasProperty('appArgs')) {
+        args(((String) project.property('appArgs')).split('\\s+'))
+    }
+}
+

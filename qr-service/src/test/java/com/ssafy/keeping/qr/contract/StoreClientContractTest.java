@@ -55,7 +55,7 @@ class StoreClientContractTest {
                 .readTimeout(Duration.ofSeconds(5))
                 .build();
 
-        storeClient = new StoreClient(restTemplate, null, null);
+        storeClient = new StoreClient(restTemplate, null, null, null);
         ReflectionTestUtils.setField(storeClient, "monolithUrl", "http://localhost:18080");
         ReflectionTestUtils.setField(storeClient, "internalAuthToken", "internal-service-token-12345");
     }
