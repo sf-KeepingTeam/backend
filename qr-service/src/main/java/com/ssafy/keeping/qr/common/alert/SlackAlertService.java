@@ -23,7 +23,7 @@ public class SlackAlertService implements AlertService {
     private final String webhookUrl;
 
     public SlackAlertService(
-            RestTemplate restTemplate,
+            @org.springframework.beans.factory.annotation.Qualifier("slackRestTemplate") RestTemplate restTemplate,
             @Value("${slack.webhook-url:}") String webhookUrl
     ) {
         this.restTemplate = restTemplate;

@@ -113,6 +113,36 @@ rest-template-recovery:
   connect-timeout: 5000   # 5초
   read-timeout: 10000     # 10초 (복구는 여유있게)
 
+# 커넥션 풀 (Apache HttpClient5) — 용도별 벌크헤드
+rest-template-pool:
+  enabled: true                          # false → 풀 없는 SimpleClientHttpRequestFactory 폴백 (A/B 비교)
+  # 읽기 풀 (restTemplate — StoreClient, MenuClient, CustomerClient 등)
+  read:
+    max-per-route: 50
+    max-total: 60
+    connection-request-timeout: 2000     # 풀에서 연결 대기 한도 (ms)
+  # 쓰기 풀 (writeRestTemplate — WalletClient capture/release/refund)
+  write:
+    max-per-route: 30
+    max-total: 30
+    connection-request-timeout: 500      # Fail-Fast
+  # 복구 풀 (recoveryRestTemplate — PaymentRecoveryService)
+  recovery:
+    max-per-route: 10
+    max-total: 10
+    connection-request-timeout: 2000
+  # Slack webhook 전용 (외부 호스트 격리)
+  slack:
+    connect-timeout: 2000
+    read-timeout: 3000
+    max-per-route: 5
+    max-total: 5
+    connection-request-timeout: 500
+  # 공통
+  validate-after-inactivity: 5000        # 유휴 후 연결 유효성 검사 (ms)
+  evict-idle: 30000                      # 유휴 연결 제거 주기 (ms)
+  time-to-live: 300000                   # 연결 최대 수명 (ms, 5분)
+
 # Resilience4j 설정
 resilience4j:
   circuitbreaker:
@@ -129,6 +159,13 @@ resilience4j:
         minimumNumberOfCalls: 3
         failureRateThreshold: 40
         waitDurationInOpenState: 30s  # 기존 60s → 30s
+        # 장애는 '실패'가 아니라 '느려짐'으로 시작한다. 실패로 확정되기(타임아웃) 전 단계에서
+        # 선제 차단해, 워커 스레드가 응답 대기로 묶이는 것 자체를 막는다.
+        # 2s  : rest-template-write.read-timeout(3s)보다 짧게 — 타임아웃 누적 전에 감지.
+        # 50% : 느림은 실패보다 약한 신호라 failureRateThreshold(40%)보다 관대하게 잡아
+        #       일시적 지연에 과민 반응하지 않도록 함.
+        slowCallDurationThreshold: 2s
+        slowCallRateThreshold: 50
       lenient:  # NotificationClient용 (관대)
         slidingWindowSize: 20
         minimumNumberOfCalls: 10

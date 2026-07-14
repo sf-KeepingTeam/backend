@@ -4,6 +4,7 @@ import com.ssafy.keeping.qr.acl.WalletClient;
 import com.ssafy.keeping.qr.acl.dto.PaymentCheckResponse;
 import com.ssafy.keeping.qr.acl.dto.RefundRequest;
 import com.ssafy.keeping.qr.acl.dto.RefundResponse;
+import com.ssafy.keeping.qr.common.alert.AlertService;
 import com.ssafy.keeping.qr.common.exception.CustomException;
 import com.ssafy.keeping.qr.common.exception.ErrorCode;
 import com.ssafy.keeping.qr.domain.intent.constant.PaymentStatus;
@@ -53,7 +54,8 @@ class PaymentRecoveryServiceTest {
                 paymentIntentRepository,
                 walletClient,
                 transactionTemplate,
-                meterRegistry
+                meterRegistry,
+                mock(AlertService.class)
         );
 
         // TransactionTemplate.executeWithoutResult: 인자 Consumer를 즉시 실행하도록 stub
