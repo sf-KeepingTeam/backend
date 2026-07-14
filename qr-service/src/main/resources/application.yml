@@ -159,6 +159,13 @@ resilience4j:
         minimumNumberOfCalls: 3
         failureRateThreshold: 40
         waitDurationInOpenState: 30s  # 기존 60s → 30s
+        # 장애는 '실패'가 아니라 '느려짐'으로 시작한다. 실패로 확정되기(타임아웃) 전 단계에서
+        # 선제 차단해, 워커 스레드가 응답 대기로 묶이는 것 자체를 막는다.
+        # 2s  : rest-template-write.read-timeout(3s)보다 짧게 — 타임아웃 누적 전에 감지.
+        # 50% : 느림은 실패보다 약한 신호라 failureRateThreshold(40%)보다 관대하게 잡아
+        #       일시적 지연에 과민 반응하지 않도록 함.
+        slowCallDurationThreshold: 2s
+        slowCallRateThreshold: 50
       lenient:  # NotificationClient용 (관대)
         slidingWindowSize: 20
         minimumNumberOfCalls: 10
