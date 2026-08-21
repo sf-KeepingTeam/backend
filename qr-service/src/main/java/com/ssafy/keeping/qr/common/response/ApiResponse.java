@@ -1,11 +1,10 @@
 package com.ssafy.keeping.qr.common.response;
 
+import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-
-import java.time.LocalDateTime;
 
 @Getter
 @Builder
@@ -13,29 +12,29 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class ApiResponse<T> {
 
-    private boolean success;
-    private int status;
-    private String message;
-    private T data;
-    private LocalDateTime timestamp;
+  private boolean success;
+  private int status;
+  private String message;
+  private T data;
+  private LocalDateTime timestamp;
 
-    public static <T> ApiResponse<T> success(String message, int statusCode, T data) {
-        return ApiResponse.<T>builder()
-                .success(true)
-                .status(statusCode)
-                .message(message)
-                .data(data)
-                .timestamp(LocalDateTime.now())
-                .build();
-    }
+  public static <T> ApiResponse<T> success(String message, int statusCode, T data) {
+    return ApiResponse.<T>builder()
+        .success(true)
+        .status(statusCode)
+        .message(message)
+        .data(data)
+        .timestamp(LocalDateTime.now())
+        .build();
+  }
 
-    public static <T> ApiResponse<T> error(String message, int statusCode) {
-        return ApiResponse.<T>builder()
-                .success(false)
-                .status(statusCode)
-                .message(message)
-                .data(null)
-                .timestamp(LocalDateTime.now())
-                .build();
-    }
+  public static <T> ApiResponse<T> error(String message, int statusCode) {
+    return ApiResponse.<T>builder()
+        .success(false)
+        .status(statusCode)
+        .message(message)
+        .data(null)
+        .timestamp(LocalDateTime.now())
+        .build();
+  }
 }

@@ -8,8 +8,8 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 public class CustomerResponse {
-    private Long customerId;
-    private String name;
-    private String email;
-    private String phone;
+  private Long customerId;
+  private String name;
+  private String email;
+  private String phone;
 }

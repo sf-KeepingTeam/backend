@@ -9,7 +9,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class MenuCategoryRequestDto {
-    @NotBlank
-    public String categoryName;
-    public Long parentId; // 세부 카테고리로 입력할 경우 기존에 있는 카테고리 id 아래로 넣는다.
+  @NotBlank public String categoryName;
+  public Long parentId; // 세부 카테고리로 입력할 경우 기존에 있는 카테고리 id 아래로 넣는다.
 }

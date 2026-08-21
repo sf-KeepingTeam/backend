@@ -11,5 +11,5 @@ import lombok.*;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonPropertyOrder({"pin"})
 public class CanonicalApprove {
-    private String pin;
+  private String pin;
 }

@@ -10,9 +10,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class RefundRequest {
-    private Long walletId;
-    private Long storeId;
-    private Long amount;
-    private Long originalTransactionId;
-    private String reason;
+  private Long walletId;
+  private Long storeId;
+  private Long amount;
+  private Long originalTransactionId;
+  private String reason;
 }

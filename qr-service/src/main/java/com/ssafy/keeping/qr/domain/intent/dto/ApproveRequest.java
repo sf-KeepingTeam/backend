@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class ApproveRequest {
 
-    @NotBlank(message = "PIN은 필수입니다")
-    @Pattern(regexp = "\\d{6}", message = "PIN은 숫자 6자리여야 합니다.")
-    private String pin;
+  @NotBlank(message = "PIN은 필수입니다")
+  @Pattern(regexp = "\\d{6}", message = "PIN은 숫자 6자리여야 합니다.")
+  private String pin;
 }

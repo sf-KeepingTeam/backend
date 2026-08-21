@@ -8,13 +8,13 @@ import org.springframework.stereotype.Component;
 @Component
 public class InternalAuthValidator {
 
-    @Value("${internal.auth-token}")
-    private String internalAuthToken;
+  @Value("${internal.auth-token}")
+  private String internalAuthToken;
 
-    public void validate(String authToken) {
-        if (!internalAuthToken.equals(authToken)) {
-            log.warn("Internal API 인증 실패: 잘못된 토큰");
-            throw new IllegalArgumentException("Internal API 인증 실패");
-        }
+  public void validate(String authToken) {
+    if (!internalAuthToken.equals(authToken)) {
+      log.warn("Internal API 인증 실패: 잘못된 토큰");
+      throw new IllegalArgumentException("Internal API 인증 실패");
     }
+  }
 }

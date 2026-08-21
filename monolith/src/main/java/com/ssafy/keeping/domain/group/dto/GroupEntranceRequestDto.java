@@ -9,6 +9,5 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class GroupEntranceRequestDto {
-    @NotBlank
-    private String inviteCode;
+  @NotBlank private String inviteCode;
 }

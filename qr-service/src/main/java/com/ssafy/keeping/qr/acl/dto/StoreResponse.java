@@ -8,11 +8,11 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 public class StoreResponse {
-    private Long storeId;
-    private String storeName;
-    private Long ownerId;
-    private String taxIdNumber;
-    private String address;
-    private boolean isActive;
-    private long version;
+  private Long storeId;
+  private String storeName;
+  private Long ownerId;
+  private String taxIdNumber;
+  private String address;
+  private boolean isActive;
+  private long version;
 }

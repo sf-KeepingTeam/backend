@@ -8,12 +8,12 @@ import org.springframework.stereotype.Component;
 @Component
 public class InternalHeaderProvider {
 
-    @Value("${internal.auth-token}")
-    private String internalAuthToken;
+  @Value("${internal.auth-token}")
+  private String internalAuthToken;
 
-    public HttpHeaders createHeaders() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.set(HttpHeaderConstants.X_INTERNAL_AUTH, internalAuthToken);
-        return headers;
-    }
+  public HttpHeaders createHeaders() {
+    HttpHeaders headers = new HttpHeaders();
+    headers.set(HttpHeaderConstants.X_INTERNAL_AUTH, internalAuthToken);
+    return headers;
+  }
 }

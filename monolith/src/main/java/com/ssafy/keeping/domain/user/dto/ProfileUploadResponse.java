@@ -11,5 +11,5 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class ProfileUploadResponse {
 
-    private String newImgUrl;
+  private String newImgUrl;
 }

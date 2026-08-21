@@ -22,33 +22,36 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class SignupController {
 
-    private final SignupFacade signupFacade;
-    private final RefreshCookieManager refreshCookieManager;
+  private final SignupFacade signupFacade;
+  private final RefreshCookieManager refreshCookieManager;
 
-    @PostMapping("/customer")
-    public ResponseEntity<ApiResponse<SignupResponse>> signupCustomer(@Valid @RequestBody CustomerSignupRequest req) {
-        var issued = signupFacade.signupCustomer(req);
+  @PostMapping("/customer")
+  public ResponseEntity<ApiResponse<SignupResponse>> signupCustomer(
+      @Valid @RequestBody CustomerSignupRequest req) {
+    var issued = signupFacade.signupCustomer(req);
 
-        ResponseCookie cookie = refreshCookieManager.issue(issued.refreshToken(), issued.refreshTtlSeconds());
+    ResponseCookie cookie =
+        refreshCookieManager.issue(issued.refreshToken(), issued.refreshTtlSeconds());
 
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .header(HttpHeaders.CACHE_CONTROL, "no-store")
-                .header(HttpHeaders.PRAGMA, "no-cache")
-                .header(HttpHeaders.SET_COOKIE, cookie.toString())
-                .body(ApiResponse.success("고객 회원가입 완료", HttpStatus.CREATED.value(), issued.body()));
-    }
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .header(HttpHeaders.CACHE_CONTROL, "no-store")
+        .header(HttpHeaders.PRAGMA, "no-cache")
+        .header(HttpHeaders.SET_COOKIE, cookie.toString())
+        .body(ApiResponse.success("고객 회원가입 완료", HttpStatus.CREATED.value(), issued.body()));
+  }
 
-    @PostMapping("/owner")
-    public ResponseEntity<ApiResponse<SignupResponse>> signupOwner(@Valid @RequestBody OwnerSignupRequest req) {
-        var issued = signupFacade.signupOwner(req);
+  @PostMapping("/owner")
+  public ResponseEntity<ApiResponse<SignupResponse>> signupOwner(
+      @Valid @RequestBody OwnerSignupRequest req) {
+    var issued = signupFacade.signupOwner(req);
 
-        ResponseCookie cookie = refreshCookieManager.issue(issued.refreshToken(), issued.refreshTtlSeconds());
+    ResponseCookie cookie =
+        refreshCookieManager.issue(issued.refreshToken(), issued.refreshTtlSeconds());
 
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .header(HttpHeaders.CACHE_CONTROL, "no-store")
-                .header(HttpHeaders.PRAGMA, "no-cache")
-                .header(HttpHeaders.SET_COOKIE, cookie.toString())
-                .body(ApiResponse.success("점주 회원가입 완료", HttpStatus.CREATED.value(), issued.body()));
-    }
-
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .header(HttpHeaders.CACHE_CONTROL, "no-store")
+        .header(HttpHeaders.PRAGMA, "no-cache")
+        .header(HttpHeaders.SET_COOKIE, cookie.toString())
+        .body(ApiResponse.success("점주 회원가입 완료", HttpStatus.CREATED.value(), issued.body()));
+  }
 }

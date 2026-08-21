@@ -9,6 +9,5 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class GroupLeaderChangeRequestDto {
-    @NotNull
-    private Long newGroupLeaderId;
+  @NotNull private Long newGroupLeaderId;
 }

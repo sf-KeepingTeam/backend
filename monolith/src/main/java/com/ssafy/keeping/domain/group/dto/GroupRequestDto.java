@@ -9,8 +9,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class GroupRequestDto {
-    @NotBlank
-    private String groupName;
-    private String groupDescription;
-
+  @NotBlank private String groupName;
+  private String groupDescription;
 }

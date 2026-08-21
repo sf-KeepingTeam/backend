@@ -10,21 +10,21 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class NotificationRequest {
-    private String targetType;     // CUSTOMER, OWNER (Payment Service 호환)
-    private Long targetId;         // (Payment Service 호환)
-    private String type;           // NotificationType (Payment Service 호환)
-    private String content;
+  private String targetType; // CUSTOMER, OWNER (Payment Service 호환)
+  private Long targetId; // (Payment Service 호환)
+  private String type; // NotificationType (Payment Service 호환)
+  private String content;
 
-    // Alias getters for backward compatibility
-    public String getReceiverType() {
-        return targetType;
-    }
+  // Alias getters for backward compatibility
+  public String getReceiverType() {
+    return targetType;
+  }
 
-    public Long getReceiverId() {
-        return targetId;
-    }
+  public Long getReceiverId() {
+    return targetId;
+  }
 
-    public String getNotificationType() {
-        return type;
-    }
+  public String getNotificationType() {
+    return type;
+  }
 }

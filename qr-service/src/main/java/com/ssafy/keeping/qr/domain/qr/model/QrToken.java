@@ -1,11 +1,10 @@
 package com.ssafy.keeping.qr.domain.qr.model;
 
+import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-
-import java.time.LocalDateTime;
 
 @Getter
 @Builder
@@ -13,19 +12,19 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class QrToken {
 
-    private String tokenId;
+  private String tokenId;
 
-    private Long walletId;
+  private Long walletId;
 
-    private Long customerId;
-    private Long bindStoreId;
+  private Long customerId;
+  private Long bindStoreId;
 
-    private LocalDateTime createdAt;
-    private LocalDateTime expiresAt;
+  private LocalDateTime createdAt;
+  private LocalDateTime expiresAt;
 
-    private Long ttl;
+  private Long ttl;
 
-    public boolean isExpired() {
-        return LocalDateTime.now().isAfter(expiresAt);
-    }
+  public boolean isExpired() {
+    return LocalDateTime.now().isAfter(expiresAt);
+  }
 }

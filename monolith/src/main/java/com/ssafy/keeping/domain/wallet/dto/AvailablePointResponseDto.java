@@ -6,8 +6,8 @@ import lombok.Getter;
 @Getter
 @AllArgsConstructor
 public class AvailablePointResponseDto {
-    private Long storeId;
-    private Long walletId;
-    private Long memberId;
-    private Long available;
+  private Long storeId;
+  private Long walletId;
+  private Long memberId;
+  private Long available;
 }

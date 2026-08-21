@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ExternalApiErrorResponse {
-    private String code;
-    private String message;
-    private String description;
+  private String code;
+  private String message;
+  private String description;
 }

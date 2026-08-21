@@ -9,9 +9,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class GroupEditRequestDto {
-    @NotBlank
-    private String groupName;
-    @NotBlank
-    private String groupDescription;
-
+  @NotBlank private String groupName;
+  @NotBlank private String groupDescription;
 }

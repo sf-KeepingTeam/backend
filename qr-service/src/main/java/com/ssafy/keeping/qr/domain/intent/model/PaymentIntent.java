@@ -4,10 +4,9 @@ import com.ssafy.keeping.qr.common.exception.CustomException;
 import com.ssafy.keeping.qr.common.exception.ErrorCode;
 import com.ssafy.keeping.qr.domain.intent.constant.PaymentStatus;
 import jakarta.persistence.*;
-import lombok.*;
-
 import java.time.LocalDateTime;
 import java.util.UUID;
+import lombok.*;
 
 @Getter
 @Setter
@@ -16,158 +15,163 @@ import java.util.UUID;
 @AllArgsConstructor
 @Entity
 @Table(
-        name = "payment_intent",
-        uniqueConstraints = {
-                @UniqueConstraint(name = "uk_intent_qr_token", columnNames = {"qr_token_id"}),
-                @UniqueConstraint(name = "uk_intent_public_id", columnNames = {"public_id"}),
-                @UniqueConstraint(name = "uk_intent_idem", columnNames = {"idempotency_key"})
-        },
-        indexes = {
-                @Index(name = "idx_status_expires", columnList = "status,expires_at"),
-                @Index(name = "idx_store_status", columnList = "store_id,status"),
-                @Index(name = "idx_wallet_status", columnList = "wallet_id,status"),
-                @Index(name = "idx_recovery", columnList = "status,expires_at,created_at")
-        }
-)
+    name = "payment_intent",
+    uniqueConstraints = {
+      @UniqueConstraint(
+          name = "uk_intent_qr_token",
+          columnNames = {"qr_token_id"}),
+      @UniqueConstraint(
+          name = "uk_intent_public_id",
+          columnNames = {"public_id"}),
+      @UniqueConstraint(
+          name = "uk_intent_idem",
+          columnNames = {"idempotency_key"})
+    },
+    indexes = {
+      @Index(name = "idx_status_expires", columnList = "status,expires_at"),
+      @Index(name = "idx_store_status", columnList = "store_id,status"),
+      @Index(name = "idx_wallet_status", columnList = "wallet_id,status"),
+      @Index(name = "idx_recovery", columnList = "status,expires_at,created_at")
+    })
 public class PaymentIntent {
-    // 낙관적 락 : 동시성 안전성(concurrency control)
-    @Version
-    @Column(name = "version", nullable = false)
-    private Long version;
+  // 낙관적 락 : 동시성 안전성(concurrency control)
+  @Version
+  @Column(name = "version", nullable = false)
+  private Long version;
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "intent_id")
-    private Long intentId;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Column(name = "intent_id")
+  private Long intentId;
 
-    @Column(name = "public_id", nullable = false, unique = true, columnDefinition = "BINARY(16)")
-    private UUID publicId;
+  @Column(name = "public_id", nullable = false, unique = true, columnDefinition = "BINARY(16)")
+  private UUID publicId;
 
-    @Column(name = "qr_token_id", nullable = false, unique = true)
-    private String qrTokenId;
+  @Column(name = "qr_token_id", nullable = false, unique = true)
+  private String qrTokenId;
 
-    @Column(name = "customer_id", nullable = false)
-    private Long customerId;
+  @Column(name = "customer_id", nullable = false)
+  private Long customerId;
 
-    @Column(name = "wallet_id", nullable = false)
-    private Long walletId;
+  @Column(name = "wallet_id", nullable = false)
+  private Long walletId;
 
-    @Column(name = "store_id", nullable = false)
-    private Long storeId;
+  @Column(name = "store_id", nullable = false)
+  private Long storeId;
 
-    @Column(nullable = false)
-    private Long amount;
+  @Column(nullable = false)
+  private Long amount;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 16)
-    private PaymentStatus status;
+  @Enumerated(EnumType.STRING)
+  @Column(nullable = false, length = 16)
+  private PaymentStatus status;
 
-    @Column(name = "created_at", nullable = false, columnDefinition = "DATETIME(3)")
-    private LocalDateTime createdAt;
+  @Column(name = "created_at", nullable = false, columnDefinition = "DATETIME(3)")
+  private LocalDateTime createdAt;
 
-    @Column(name = "updated_at", nullable = false, columnDefinition = "DATETIME(3)")
-    private LocalDateTime updatedAt;
+  @Column(name = "updated_at", nullable = false, columnDefinition = "DATETIME(3)")
+  private LocalDateTime updatedAt;
 
-    @Column(name = "expires_at", nullable = false, columnDefinition = "DATETIME(3)")
-    private LocalDateTime expiresAt;
+  @Column(name = "expires_at", nullable = false, columnDefinition = "DATETIME(3)")
+  private LocalDateTime expiresAt;
 
-    @Column(name = "approved_at", columnDefinition = "DATETIME(3)")
-    private LocalDateTime approvedAt;
+  @Column(name = "approved_at", columnDefinition = "DATETIME(3)")
+  private LocalDateTime approvedAt;
 
-    @Column(name = "declined_at", columnDefinition = "DATETIME(3)")
-    private LocalDateTime declinedAt;
+  @Column(name = "declined_at", columnDefinition = "DATETIME(3)")
+  private LocalDateTime declinedAt;
 
-    @Column(name = "canceled_at", columnDefinition = "DATETIME(3)")
-    private LocalDateTime canceledAt;
+  @Column(name = "canceled_at", columnDefinition = "DATETIME(3)")
+  private LocalDateTime canceledAt;
 
-    @Column(name = "completed_at", columnDefinition = "DATETIME(3)")
-    private LocalDateTime completedAt;
+  @Column(name = "completed_at", columnDefinition = "DATETIME(3)")
+  private LocalDateTime completedAt;
 
-    @Column(name = "idempotency_key", length = 64, unique = true)
-    private String idempotencyKey;
+  @Column(name = "idempotency_key", length = 64, unique = true)
+  private String idempotencyKey;
 
-    @Column(name = "recovered_at", columnDefinition = "DATETIME(3)")
-    private LocalDateTime recoveredAt;
+  @Column(name = "recovered_at", columnDefinition = "DATETIME(3)")
+  private LocalDateTime recoveredAt;
 
-    @Column(name = "recovery_note", length = 500)
-    private String recoveryNote;
+  @Column(name = "recovery_note", length = 500)
+  private String recoveryNote;
 
-    // NOTE: prod 배포 시 ALTER TABLE payment_intent ADD COLUMN retry_count INT NOT NULL DEFAULT 0;
-    @Builder.Default
-    @Column(name = "retry_count", nullable = false)
-    private int retryCount = 0;
+  // NOTE: prod 배포 시 ALTER TABLE payment_intent ADD COLUMN retry_count INT NOT NULL DEFAULT 0;
+  @Builder.Default
+  @Column(name = "retry_count", nullable = false)
+  private int retryCount = 0;
 
-    @PrePersist
-    public void onCreate() {
-        if (publicId == null) publicId = UUID.randomUUID();
-        if (status == null) status = PaymentStatus.PENDING;
-        if (createdAt == null) createdAt = LocalDateTime.now();
-        if (updatedAt == null) updatedAt = createdAt;
+  @PrePersist
+  public void onCreate() {
+    if (publicId == null) publicId = UUID.randomUUID();
+    if (status == null) status = PaymentStatus.PENDING;
+    if (createdAt == null) createdAt = LocalDateTime.now();
+    if (updatedAt == null) updatedAt = createdAt;
+  }
+
+  @PreUpdate
+  public void onUpdate() {
+    updatedAt = LocalDateTime.now();
+  }
+
+  public void markApproved(LocalDateTime now) {
+    // 만료 검사
+    if (now.isAfter(this.expiresAt)) {
+      throw new CustomException(ErrorCode.PAYMENT_INTENT_EXPIRED);
     }
-
-    @PreUpdate
-    public void onUpdate() {
-        updatedAt = LocalDateTime.now();
+    // 전이 가능 상태만 허용
+    if (this.status != PaymentStatus.PENDING) {
+      throw new CustomException(ErrorCode.PAYMENT_STATUS_CONFLICT);
     }
+    this.status = PaymentStatus.APPROVED;
+    this.approvedAt = now;
+  }
 
-    public void markApproved(LocalDateTime now) {
-        // 만료 검사
-        if (now.isAfter(this.expiresAt)) {
-            throw new CustomException(ErrorCode.PAYMENT_INTENT_EXPIRED);
-        }
-        // 전이 가능 상태만 허용
-        if (this.status != PaymentStatus.PENDING) {
-            throw new CustomException(ErrorCode.PAYMENT_STATUS_CONFLICT);
-        }
-        this.status = PaymentStatus.APPROVED;
-        this.approvedAt = now;
+  public void markDeclined(LocalDateTime now) {
+    if (this.status != PaymentStatus.PENDING) {
+      throw new CustomException(ErrorCode.PAYMENT_STATUS_CONFLICT);
     }
+    this.status = PaymentStatus.DECLINED;
+    this.declinedAt = now;
+  }
 
-    public void markDeclined(LocalDateTime now) {
-        if (this.status != PaymentStatus.PENDING) {
-            throw new CustomException(ErrorCode.PAYMENT_STATUS_CONFLICT);
-        }
-        this.status = PaymentStatus.DECLINED;
-        this.declinedAt = now;
+  public void markCanceled(LocalDateTime now) {
+    if (this.status != PaymentStatus.PENDING) {
+      throw new CustomException(ErrorCode.PAYMENT_STATUS_CONFLICT);
     }
+    this.status = PaymentStatus.CANCELED;
+    this.canceledAt = now;
+  }
 
-    public void markCanceled(LocalDateTime now) {
-        if (this.status != PaymentStatus.PENDING) {
-            throw new CustomException(ErrorCode.PAYMENT_STATUS_CONFLICT);
-        }
-        this.status = PaymentStatus.CANCELED;
-        this.canceledAt = now;
+  public void markExpired(LocalDateTime now) {
+    if (this.status != PaymentStatus.PENDING) {
+      throw new CustomException(ErrorCode.PAYMENT_STATUS_CONFLICT);
     }
+    this.status = PaymentStatus.EXPIRED;
+  }
 
-    public void markExpired(LocalDateTime now) {
-        if (this.status != PaymentStatus.PENDING) {
-            throw new CustomException(ErrorCode.PAYMENT_STATUS_CONFLICT);
-        }
-        this.status = PaymentStatus.EXPIRED;
+  public void markUncertain() {
+    if (this.status != PaymentStatus.PENDING && this.status != PaymentStatus.APPROVED) {
+      throw new CustomException(ErrorCode.PAYMENT_STATUS_CONFLICT);
     }
+    this.status = PaymentStatus.UNCERTAIN;
+  }
 
-    public void markUncertain() {
-        if (this.status != PaymentStatus.PENDING && this.status != PaymentStatus.APPROVED) {
-            throw new CustomException(ErrorCode.PAYMENT_STATUS_CONFLICT);
-        }
-        this.status = PaymentStatus.UNCERTAIN;
+  public void markRolledBack(LocalDateTime now, String note) {
+    if (this.status != PaymentStatus.UNCERTAIN) {
+      throw new CustomException(ErrorCode.PAYMENT_STATUS_CONFLICT);
     }
+    this.status = PaymentStatus.ROLLED_BACK;
+    this.recoveredAt = now;
+    this.recoveryNote = note;
+  }
 
-    public void markRolledBack(LocalDateTime now, String note) {
-        if (this.status != PaymentStatus.UNCERTAIN) {
-            throw new CustomException(ErrorCode.PAYMENT_STATUS_CONFLICT);
-        }
-        this.status = PaymentStatus.ROLLED_BACK;
-        this.recoveredAt = now;
-        this.recoveryNote = note;
+  public void markRecoveryFailed(LocalDateTime now, String note) {
+    if (this.status != PaymentStatus.UNCERTAIN) {
+      throw new CustomException(ErrorCode.PAYMENT_STATUS_CONFLICT);
     }
-
-    public void markRecoveryFailed(LocalDateTime now, String note) {
-        if (this.status != PaymentStatus.UNCERTAIN) {
-            throw new CustomException(ErrorCode.PAYMENT_STATUS_CONFLICT);
-        }
-        this.status = PaymentStatus.RECOVERY_FAILED;
-        this.recoveredAt = now;
-        this.recoveryNote = note;
-    }
+    this.status = PaymentStatus.RECOVERY_FAILED;
+    this.recoveredAt = now;
+    this.recoveryNote = note;
+  }
 }
