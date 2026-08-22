@@ -52,6 +52,13 @@ services:
       #       두 서비스의 오버헤드가 비대칭이라 비교가 오염된다
       # 측정에서 껐다는 사실은 result.md 에 기록할 것.
       - MANAGEMENT_TRACING_ENABLED=${MANAGEMENT_TRACING_ENABLED:-false}
+      # Tomcat ThreadPool MBean 등록 — 이게 없으면 tomcat_threads_* 지표가 통째로 안 나온다.
+      # Spring Boot 기본값이 false 라서, 켜지 않으면
+      #   tomcat_sessions_* 만 나오고 tomcat_threads_busy / _config_max 는 없다.
+      #   → Q1("병목이 DB인가 톰캣 스레드인가 CPU인가")의 세 후보 중 하나를 못 본다.
+      #   → SERVER_TOMCAT_THREADS_MAX 가 실제로 먹었는지 검증할 방법도 사라진다.
+      # 양쪽 서비스·양쪽 구성에 동일하게 적용하므로 비교에는 편향을 주지 않는다.
+      - SERVER_TOMCAT_MBEANREGISTRY_ENABLED=true
     depends_on:
       mysql:
         condition: service_healthy
@@ -97,6 +104,13 @@ services:
       #       두 서비스의 오버헤드가 비대칭이라 비교가 오염된다
       # 측정에서 껐다는 사실은 result.md 에 기록할 것.
       - MANAGEMENT_TRACING_ENABLED=${MANAGEMENT_TRACING_ENABLED:-false}
+      # Tomcat ThreadPool MBean 등록 — 이게 없으면 tomcat_threads_* 지표가 통째로 안 나온다.
+      # Spring Boot 기본값이 false 라서, 켜지 않으면
+      #   tomcat_sessions_* 만 나오고 tomcat_threads_busy / _config_max 는 없다.
+      #   → Q1("병목이 DB인가 톰캣 스레드인가 CPU인가")의 세 후보 중 하나를 못 본다.
+      #   → SERVER_TOMCAT_THREADS_MAX 가 실제로 먹었는지 검증할 방법도 사라진다.
+      # 양쪽 서비스·양쪽 구성에 동일하게 적용하므로 비교에는 편향을 주지 않는다.
+      - SERVER_TOMCAT_MBEANREGISTRY_ENABLED=true
     depends_on:
       mysql:
         condition: service_healthy
