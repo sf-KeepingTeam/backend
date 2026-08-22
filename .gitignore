@@ -108,4 +108,12 @@ body.json
 nul
 
 ### Local MySQL data ###
-mysql/
+mysql/data/
+!mysql/init/
+!mysql/migration/
+!mysql/ops/
+
+### Tool state (local only) ###
+.omc/
+.claude-watch/
+.claude/harness-log/
