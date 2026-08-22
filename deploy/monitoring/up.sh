@@ -8,10 +8,11 @@ cd "$(dirname "$0")"
 [ -f .env ] || { echo "ERROR: .env 가 없습니다. .env.example 을 복사해서 채우세요."; exit 1; }
 set -a; . ./.env; set +a
 
+: "${ALLINONE_HOST:?ALLINONE_HOST 미설정}"
 : "${MONOLITH_HOST:?MONOLITH_HOST 미설정}"
 : "${QR_SERVICE_HOST:?QR_SERVICE_HOST 미설정}"
 
-envsubst '$MONOLITH_HOST $QR_SERVICE_HOST' < prometheus.yml.template > prometheus.generated.yml
+envsubst '$ALLINONE_HOST $MONOLITH_HOST $QR_SERVICE_HOST' < prometheus.yml.template > prometheus.generated.yml
 echo "--- 생성된 타겟 ---"
 grep -A1 "targets:" prometheus.generated.yml
 

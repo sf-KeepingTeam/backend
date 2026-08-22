@@ -1,34 +1,50 @@
 # =============================================================================
-# 2-EC2 부하측정용 Prometheus 설정 (loadgen EC2에서 실행)
+# 부하측정용 Prometheus (loadgen EC2에서 실행)
 # =============================================================================
-# 기존 monitoring/prometheus.yml 은 docker-compose.msa.yml(단일 호스트) 전용이며
-# 타겟이 컨테이너 이름(monolith:8080 / qr-service:8082)이라 2-EC2에서는 동작하지 않는다.
-# 이 파일은 Private IP 기준으로 두 EC2를 직접 긁는다.
+# 기존 monitoring/prometheus.yml 은 docker-compose.msa.yml(단일 호스트) 전용이고
+# 타겟이 컨테이너 이름(monolith:8080 / qr-service:8082)이라 여기서는 못 쓴다.
 #
-# envsubst 변수: MONOLITH_HOST, QR_SERVICE_HOST (둘 다 Private IP)
+# 구성 1(합침)과 구성 2(나눔)를 둘 다 등록해 둔다.
+# 안 돌고 있는 쪽은 target down 으로 표시될 뿐 해가 없고,
+# 구성을 전환할 때마다 설정을 고칠 필요가 없어진다.
+#
+#   setup="config1"  → keeping-allinone (합침)
+#   setup="config2"  → keeping-main + keeping-payment (나눔)
+#
+# envsubst 변수: ALLINONE_HOST, MONOLITH_HOST, QR_SERVICE_HOST (전부 Private IP)
 
 global:
-  # 부하측정용으로 5초. 포화 구간의 순간 피크(hikaricp_connections_pending 등)를
-  # 15초 간격으로는 놓칠 수 있다.
+  # 5초. 15초로는 hikaricp_connections_pending 같은 지표의 순간 피크를 놓친다.
+  # 그러면 "DB 경합이 없었다"는 잘못된 결론이 나온다.
   scrape_interval: 5s
   scrape_timeout: 4s
-  external_labels:
-    setup: keeping-2ec2
 
 scrape_configs:
-  - job_name: 'monolith'
+  # ── 구성 1 (합침) — 한 서버에 monolith + qr-service ──────────────────────
+  - job_name: 'config1-monolith'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['${ALLINONE_HOST}:8080']
+        labels: { setup: config1, service: monolith }
+
+  - job_name: 'config1-qr-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['${ALLINONE_HOST}:8081']
+        labels: { setup: config1, service: qr-service }
+
+  # ── 구성 2 (나눔) — main + payment ───────────────────────────────────────
+  - job_name: 'config2-monolith'
     metrics_path: '/actuator/prometheus'
     static_configs:
       - targets: ['${MONOLITH_HOST}:8080']
-        labels:
-          service: monolith
+        labels: { setup: config2, service: monolith }
 
-  - job_name: 'qr-service'
+  - job_name: 'config2-qr-service'
     metrics_path: '/actuator/prometheus'
     static_configs:
       - targets: ['${QR_SERVICE_HOST}:8081']   # 8082 아님
-        labels:
-          service: qr-service
+        labels: { setup: config2, service: qr-service }
 
   - job_name: 'prometheus'
     static_configs:
