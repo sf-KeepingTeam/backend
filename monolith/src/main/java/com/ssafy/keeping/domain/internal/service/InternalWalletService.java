@@ -31,8 +31,11 @@ import com.ssafy.keeping.domain.wallet.repository.WalletLotMoveRepository;
 import com.ssafy.keeping.domain.wallet.repository.WalletRepository;
 import com.ssafy.keeping.domain.wallet.repository.WalletStoreBalanceRepository;
 import com.ssafy.keeping.domain.wallet.repository.WalletStoreLotRepository;
+import com.ssafy.keeping.domain.wallet.service.WalletLedgerService;
+import com.ssafy.keeping.global.config.WalletLedgerProperties;
 import com.ssafy.keeping.global.exception.CustomException;
 import com.ssafy.keeping.global.exception.constants.ErrorCode;
+import com.ssafy.keeping.global.metrics.LedgerMetrics;
 import jakarta.persistence.LockTimeoutException;
 import jakarta.persistence.PessimisticLockException;
 import java.math.BigDecimal;
@@ -63,6 +66,9 @@ public class InternalWalletService {
   private final MenuRepository menuRepository;
   private final WalletStoreLotRepository walletStoreLotRepository;
   private final WalletLotMoveRepository walletLotMoveRepository;
+  private final WalletLedgerService walletLedgerService;
+  private final WalletLedgerProperties walletLedgerProperties;
+  private final LedgerMetrics ledgerMetrics;
   private final IdempotencyService idempotencyService;
 
   @Qualifier("canonicalObjectMapper")
@@ -199,6 +205,18 @@ public class InternalWalletService {
       return FundsResponse.paymentInProgress();
     }
 
+    // 2-1. ★ lazy 만료 정산 — 잔액 검사 전에 실행하여 갭을 0으로 만든다 (설계안 §3-2)
+    if (balance != null && walletLedgerProperties.getExpiry().isLazyEnabled()) {
+      try {
+        walletLedgerService.settleExpiredLots(walletId, storeId, LocalDateTime.now(), balance);
+      } catch (Exception e) {
+        // lazy 정산 실패가 결제를 막지 않는다. 삼키고 기록하고 진행
+        log.warn("[LEDGER_MISMATCH] cause=expiry_clamp walletId={} storeId={} error={}",
+            walletId, storeId, e.getMessage());
+        ledgerMetrics.mismatch(LedgerMetrics.CAUSE_EXPIRY_CLAMP);
+      }
+    }
+
     if (balance == null || balance.getBalance() < amount) {
       log.warn(
           "잔액 부족: walletId={}, storeId={}, required={}, actual={}",
@@ -270,11 +288,15 @@ public class InternalWalletService {
     }
     if (lotLeft != 0) {
       log.warn(
-          "LOT 차감 불완전: walletId={}, storeId={}, amount={}, unmatched={}",
+          "[LEDGER_MISMATCH] cause=lot_shortfall walletId={} storeId={} amount={} unmatched={}",
           walletId,
           storeId,
           amount,
           lotLeft);
+      ledgerMetrics.mismatch(LedgerMetrics.CAUSE_LOT_SHORTFALL);
+      if (walletLedgerProperties.getCapture().isStrictLot()) {
+        throw new CustomException(ErrorCode.FUNDS_INVARIANT_VIOLATION);
+      }
     }
 
     log.info(
@@ -285,44 +307,6 @@ public class InternalWalletService {
         transaction.getTransactionId());
 
     return FundsResponse.ok(transaction.getTransactionId());
-  }
-
-  /** 잔액 복원 (결제 취소 시) */
-  @Transactional
-  public void restore(Long walletId, Long storeId, Long amount) {
-    Wallet wallet =
-        walletRepository
-            .findById(walletId)
-            .orElseThrow(() -> new CustomException(ErrorCode.WALLET_NOT_FOUND));
-
-    Store store =
-        storeRepository
-            .findById(storeId)
-            .orElseThrow(() -> new CustomException(ErrorCode.STORE_NOT_FOUND));
-
-    // 잔액 조회 (행잠금 - 3초 타임아웃)
-    WalletStoreBalance balance;
-    try {
-      balance =
-          balanceRepository
-              .lockByWalletIdAndStoreId(walletId, storeId)
-              .orElseGet(
-                  () ->
-                      balanceRepository.save(
-                          WalletStoreBalance.builder()
-                              .wallet(wallet)
-                              .store(store)
-                              .balance(0L)
-                              .build()));
-    } catch (PessimisticLockException | LockTimeoutException e) {
-      log.warn("복원 중 락 타임아웃: walletId={}, storeId={}, 다른 결제가 진행 중", walletId, storeId);
-      throw new CustomException(ErrorCode.PAYMENT_IN_PROGRESS);
-    }
-
-    // 잔액 복원
-    balance.addBalance(amount);
-
-    log.info("잔액 복원 완료: walletId={}, storeId={}, amount={}", walletId, storeId, amount);
   }
 
   /** 환불 처리 (멱등성 보장) Idempotency-Key를 통해 중복 환불 방지 */
@@ -407,7 +391,7 @@ public class InternalWalletService {
     }
   }
 
-  /** 실제 환불 처리 - 잔액 복원 + 환불 거래 내역 생성 */
+  /** 실제 환불 처리 - 잔액 복원 + lot 복원 + 환불 거래 내역 생성 */
   @Transactional
   public RefundResponse processRefund(Long walletId, RefundRequest request) {
     Long storeId = request.getStoreId();
@@ -415,7 +399,12 @@ public class InternalWalletService {
     Long originalTransactionId = request.getOriginalTransactionId();
     String reason = request.getReason();
 
-    // 1. 엔티티 조회
+    // 1. originalTransactionId 필수 검증
+    if (originalTransactionId == null) {
+      throw new CustomException(ErrorCode.REFUND_ORIGINAL_TX_REQUIRED);
+    }
+
+    // 2. 엔티티 조회
     Wallet wallet =
         walletRepository
             .findById(walletId)
@@ -426,19 +415,17 @@ public class InternalWalletService {
             .findById(storeId)
             .orElseThrow(() -> new CustomException(ErrorCode.STORE_NOT_FOUND));
 
-    // 2. 원본 거래 확인 (선택적)
-    if (originalTransactionId != null) {
-      Transaction originalTx =
-          transactionRepository
-              .findById(originalTransactionId)
-              .orElseThrow(() -> new CustomException(ErrorCode.TRANSACTION_NOT_FOUND));
+    // 3. 원본 거래 조회 (필수)
+    Transaction originalTx =
+        transactionRepository
+            .findById(originalTransactionId)
+            .orElseThrow(() -> new CustomException(ErrorCode.TRANSACTION_NOT_FOUND));
 
-      if (!originalTx.getWallet().getWalletId().equals(walletId)) {
-        return RefundResponse.failed("원본 거래의 지갑 ID가 일치하지 않습니다");
-      }
+    if (!originalTx.getWallet().getWalletId().equals(walletId)) {
+      return RefundResponse.failed("원본 거래의 지갑 ID가 일치하지 않습니다");
     }
 
-    // 3. 잔액 복원 (행잠금)
+    // 4. 잔액 복원 (행잠금)
     WalletStoreBalance balance;
     try {
       balance =
@@ -459,22 +446,32 @@ public class InternalWalletService {
 
     balance.addBalance(amount);
 
-    // 4. 환불 거래 내역 생성
+    // 5. 환불 거래 내역 생성 (customer를 원거래에서 가져와 세팅)
     Transaction refundTx =
         transactionRepository.save(
             Transaction.builder()
                 .wallet(wallet)
+                .customer(originalTx.getCustomer())
                 .store(store)
                 .transactionType(TransactionType.REFUND)
                 .amount(amount)
                 .build());
 
+    // 6. lot 복원
+    long sumRestore = walletLedgerService.restoreLotsByOriginalTx(originalTx, refundTx);
+
+    // 7. 합계 검증
+    if (sumRestore != amount) {
+      throw new CustomException(ErrorCode.FUNDS_INVARIANT_VIOLATION);
+    }
+
     log.info(
-        "환불 완료: walletId={}, storeId={}, amount={}, refundTxId={}, reason={}",
+        "환불 완료: walletId={}, storeId={}, amount={}, refundTxId={}, originalTxId={}, reason={}",
         walletId,
         storeId,
         amount,
         refundTx.getTransactionId(),
+        originalTransactionId,
         reason);
 
     return RefundResponse.ok(refundTx.getTransactionId());

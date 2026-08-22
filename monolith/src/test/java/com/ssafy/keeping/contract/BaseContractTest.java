@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import com.ssafy.keeping.domain.internal.controller.InternalStoreController;
+import com.ssafy.keeping.domain.internal.service.InternalAuthValidator;
 import com.ssafy.keeping.domain.store.model.Store;
 import com.ssafy.keeping.domain.store.repository.StoreRepository;
 import com.ssafy.keeping.domain.user.owner.model.Owner;
@@ -42,7 +43,8 @@ public abstract class BaseContractTest {
     when(storeRepository.findById(eq(1L))).thenReturn(Optional.of(mockStore));
 
     // Controller 직접 생성 (DI 대신)
-    InternalStoreController controller = new InternalStoreController(storeRepository);
+    InternalAuthValidator authValidator = Mockito.mock(InternalAuthValidator.class);
+    InternalStoreController controller = new InternalStoreController(storeRepository, authValidator);
 
     // Standalone MockMvc 설정 (Spring Context 불필요!)
     StandaloneMockMvcBuilder mockMvcBuilder = MockMvcBuilders.standaloneSetup(controller);

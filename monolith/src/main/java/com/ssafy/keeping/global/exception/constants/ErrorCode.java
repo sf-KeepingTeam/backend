@@ -47,6 +47,7 @@ public enum ErrorCode {
   REFUND_PENDING(HttpStatus.ACCEPTED, "환불이 아직 처리 중입니다. 잠시 후 다시 확인해주세요."),
   REFUND_FAILED_NEEDS_SUPPORT(
       HttpStatus.INTERNAL_SERVER_ERROR, "환불 처리에 문제가 발생했습니다. 고객센터 확인이 필요합니다."),
+  REFUND_ORIGINAL_TX_REQUIRED(HttpStatus.BAD_REQUEST, "환불 요청에 원거래 ID가 필요합니다."),
   UNAUTHORIZED_ACCESS(HttpStatus.FORBIDDEN, "본인의 거래만 취소할 수 있습니다."),
 
   // Menu 관련

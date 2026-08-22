@@ -59,20 +59,6 @@ public class InternalWalletController {
     return builder.body(result.getBody());
   }
 
-  /** 잔액 복원 (결제 취소 시) */
-  @PostMapping("/{walletId}/stores/{storeId}/restore")
-  public ResponseEntity<Void> restore(
-      @PathVariable Long walletId,
-      @PathVariable Long storeId,
-      @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false)
-          String authToken,
-      @RequestBody RestoreRequest request) {
-    internalAuthValidator.validate(authToken);
-
-    internalWalletService.restore(walletId, storeId, request.amount());
-    return ResponseEntity.ok().build();
-  }
-
   /** 환불 처리 - 기존 결제에 대한 환불 Idempotency-Key 헤더를 통해 중복 환불 방지 */
   @PostMapping("/{walletId}/refund")
   public ResponseEntity<?> refund(
@@ -92,6 +78,4 @@ public class InternalWalletController {
     }
     return builder.body(result.getBody());
   }
-
-  public record RestoreRequest(Long amount) {}
 }

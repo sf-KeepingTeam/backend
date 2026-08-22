@@ -7,10 +7,12 @@
 ```
 global/
 ├── config/       AsyncConfig, CanonicalJsonConfig, FirebaseConfig, PasswordConfig,
-│                 RedisConfig, RestTemplateConfig, S3Config, SwaggerConfig, TimeConfig
+│                 RedisConfig, RestTemplateConfig, S3Config, ShedLockConfig,
+│                 SwaggerConfig, TimeConfig, WalletLedgerProperties
 ├── constants/    HttpHeaderConstants (X-Internal-Auth, Idempotency-Key)
 ├── exception/    CustomException, GlobalExceptionHandler, constants/ErrorCode,
 │                 constants/ExternalApiErrorMapper, dto/ExceptionDto
+├── metrics/      LedgerMetrics
 ├── response/     ApiResponse, ExternalApiResponse, ExternalApiErrorResponse
 ├── s3/service/   ImageService
 └── util/         TxUtils
@@ -35,6 +37,9 @@ global/
 | `PasswordConfig` | `PasswordEncoder` 빈 1개. PIN 해시뿐 아니라 모든 비밀번호성 데이터에 공용 사용 가능 |
 | `TxUtils` | 트랜잭션 경계 유틸 |
 | `ExternalApiErrorMapper` | SSAFY 금융망 등 외부 API 오류 코드 → `ErrorCode` 매핑 |
+| `LedgerMetrics` | 지갑 원장 Prometheus 메트릭 7종 (Counter 4 + Gauge 3). Gauge는 AtomicLong 강한 참조로 보관 — GC로 NaN 방지 |
+| `WalletLedgerProperties` | `@ConfigurationProperties(prefix = "wallet")`. 만료·캡처·대사 스케줄/배치 설정 |
+| `ShedLockConfig` | ShedLock 분산 스케줄러 락. Redis 기반, 네임스페이스 `monolith-ledger`, 기본 최대 락 30분 |
 
 ## 공통 규칙
 
@@ -59,3 +64,6 @@ global/
 6. `ImageService` 메서드 호출 시 두 번째 인자는 경로(path)가 아니라 **이미지 종류(kindOfImage, 예: `"store"`, `"menu"`)** — 네이밍 주의.
 7. `GlobalExceptionHandler`는 `ApiResponse` 포맷으로 응답한다. `ExceptionDto`는 JWT 인증 실패 응답(`JwtAuthenticationEntryPoint`/`JwtAccessDeniedHandler`)에서 사용 중.
 8. 비표준 헤더(`X-Internal-Auth`, `Idempotency-Key`) 사용 시 `HttpHeaderConstants` 상수 참조 — 문자열 직접 입력 금지.
+9. `LedgerMetrics`의 Gauge는 반드시 빈 필드(AtomicLong)로 강한 참조를 유지해야 한다. Micrometer Gauge는 약한 참조로 등록되므로, 로컬 변수나 람다 캡처만으로는 GC 후 NaN이 된다.
+10. `WalletLedgerProperties` 변경 시 `application.yml`의 `wallet:` 블록도 함께 갱신할 것.
+11. `ShedLockConfig`의 네임스페이스(`monolith-ledger`)는 qr-service(`qr-recovery`)와 분리되어 있다. 변경 시 기존 락 키와 호환성 확인 필요.

@@ -16,16 +16,13 @@ import com.ssafy.keeping.domain.payment.transactions.repository.TransactionRepos
 import com.ssafy.keeping.domain.store.model.Store;
 import com.ssafy.keeping.domain.store.repository.StoreRepository;
 import com.ssafy.keeping.domain.wallet.model.Wallet;
-import com.ssafy.keeping.domain.wallet.model.WalletLotMove;
 import com.ssafy.keeping.domain.wallet.model.WalletStoreBalance;
-import com.ssafy.keeping.domain.wallet.model.WalletStoreLot;
-import com.ssafy.keeping.domain.wallet.repository.WalletLotMoveRepository;
 import com.ssafy.keeping.domain.wallet.repository.WalletStoreBalanceRepository;
+import com.ssafy.keeping.domain.wallet.service.WalletLedgerService;
 import com.ssafy.keeping.global.exception.CustomException;
 import com.ssafy.keeping.global.exception.constants.ErrorCode;
 import java.time.Clock;
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -49,7 +46,7 @@ public class PaymentRefundService {
 
   private final TransactionRepository transactionRepository;
   private final WalletStoreBalanceRepository walletStoreBalanceRepository;
-  private final WalletLotMoveRepository walletLotMoveRepository;
+  private final WalletLedgerService walletLedgerService;
   private final StoreRepository storeRepository;
   private final IdempotencyService idempotencyService;
   private final NotificationService notificationService;
@@ -198,30 +195,8 @@ public class PaymentRefundService {
                 });
     balance.addBalance(original.getAmount());
 
-    // LOT 복원: 원거래의 USE move(delta<0) 조회 → 각 lot.amount_remaining += (-delta)
-    //    + 복원 move 기록(양수)
-    List<WalletLotMove> usedMoves =
-        walletLotMoveRepository.findAllByTransactionIdWithLotLock(original.getTransactionId());
-    long sumRestore = 0L;
-    for (WalletLotMove m : usedMoves) {
-      long delta = m.getDelta(); // USE는 음수
-      if (delta >= 0) continue; // 방어
-      long restore = -delta; // 복원량(+)
-
-      WalletStoreLot lot = m.getLot();
-      // 상한 보호: (remaining + restore) <= total
-      long newRemaining = lot.getAmountRemaining() + restore;
-      if (newRemaining > lot.getAmountTotal()) {
-        throw new CustomException(ErrorCode.FUNDS_INVARIANT_VIOLATION);
-      }
-      lot.setAmountRemaining(newRemaining);
-
-      // 복원 move(+)
-      WalletLotMove restoreMove = WalletLotMove.of(cancelTx, lot, restore);
-      walletLotMoveRepository.save(restoreMove);
-
-      sumRestore += restore;
-    }
+    // LOT 복원: WalletLedgerService로 위임 (합계 검증은 호출자 책임)
+    long sumRestore = walletLedgerService.restoreLotsByOriginalTx(original, cancelTx);
 
     // LOT 합계 == 결제금액 확인
     if (sumRestore != original.getAmount()) {

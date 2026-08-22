@@ -124,32 +124,6 @@ public class WalletClient {
     throw new CustomException(ErrorCode.WALLET_SERVICE_UNAVAILABLE, t);
   }
 
-  /** 자금 복원 (결제 취소 시) - writeRestTemplate 사용 (3초 Fail-Fast) - 재시도 없음 (maxAttempts: 1) */
-  @CircuitBreaker(name = "walletClient", fallbackMethod = "restoreFallback")
-  @Retry(name = "walletClient", fallbackMethod = "restoreFallback")
-  public void restore(Long walletId, Long storeId, Long amount) {
-    String url = monolithUrl + "/internal/wallets/" + walletId + "/stores/" + storeId + "/restore";
-
-    HttpHeaders headers = internalHeaderProvider.createHeaders();
-    headers.set("Content-Type", "application/json");
-
-    RestoreRequest body = new RestoreRequest(amount);
-
-    writeRestTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(body, headers), Void.class);
-
-    log.info("잔액 복원 완료: walletId={}, storeId={}, amount={}", walletId, storeId, amount);
-  }
-
-  private void restoreFallback(Long walletId, Long storeId, Long amount, Throwable t) {
-    log.error(
-        "잔액 복원 Fallback 호출: walletId={}, storeId={}, amount={}, error={}",
-        walletId,
-        storeId,
-        amount,
-        t.getMessage());
-    throw new CustomException(ErrorCode.WALLET_SERVICE_UNAVAILABLE, t);
-  }
-
   /** 결제 상태 확인 - 멱등성 키로 기존 결제 존재 여부 확인 */
   @CircuitBreaker(name = "walletClient", fallbackMethod = "checkPaymentFallback")
   @Retry(name = "walletClientReadOnly", fallbackMethod = "checkPaymentFallback")
@@ -278,5 +252,4 @@ public class WalletClient {
     throw new CustomException(ErrorCode.WALLET_SERVICE_UNAVAILABLE, t);
   }
 
-  private record RestoreRequest(Long amount) {}
 }

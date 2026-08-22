@@ -189,6 +189,56 @@ class PaymentRecoveryServiceTest {
     assertThat(maxRetryCount).isEqualTo(1.0);
   }
 
+  @Test
+  void refundForRecovery_항상_originalTransactionId를_포함한다() {
+    // given
+    Long expectedTxId = 7777L;
+    PaymentIntent intent = buildUncertainIntent(600L);
+    when(walletClient.checkPaymentForRecovery(anyString()))
+        .thenReturn(
+            PaymentCheckResponse.builder().exists(true).transactionId(expectedTxId).build());
+    when(walletClient.refundForRecovery(any(RefundRequest.class), anyString()))
+        .thenReturn(RefundResponse.builder().success(true).refundTransactionId(8888L).build());
+    when(paymentIntentRepository.findById(600L)).thenReturn(Optional.of(intent));
+
+    // when
+    service.recoverSinglePayment(intent);
+
+    // then: RefundRequest에 originalTransactionId가 반드시 채워져야 한다
+    ArgumentCaptor<RefundRequest> captor = ArgumentCaptor.forClass(RefundRequest.class);
+    verify(walletClient).refundForRecovery(captor.capture(), anyString());
+
+    RefundRequest captured = captor.getValue();
+    assertThat(captured.getOriginalTransactionId())
+        .as("originalTransactionId must be populated from checkResult.transactionId")
+        .isNotNull()
+        .isEqualTo(expectedTxId);
+    assertThat(captured.getWalletId()).isEqualTo(intent.getWalletId());
+    assertThat(captured.getStoreId()).isEqualTo(intent.getStoreId());
+    assertThat(captured.getAmount()).isEqualTo(intent.getAmount());
+  }
+
+  @Test
+  void refundForRecovery_checkResult의_transactionId가_null이면_그대로_전달된다() {
+    // given: exists=true이지만 transactionId=null인 비정상 응답
+    PaymentIntent intent = buildUncertainIntent(700L);
+    when(walletClient.checkPaymentForRecovery(anyString()))
+        .thenReturn(PaymentCheckResponse.builder().exists(true).transactionId(null).build());
+    when(walletClient.refundForRecovery(any(RefundRequest.class), anyString()))
+        .thenReturn(RefundResponse.builder().success(true).refundTransactionId(9999L).build());
+    when(paymentIntentRepository.findById(700L)).thenReturn(Optional.of(intent));
+
+    // when
+    service.recoverSinglePayment(intent);
+
+    // then: originalTransactionId는 null 그대로 — monolith가 필수화하면 여기서 실패할 것
+    ArgumentCaptor<RefundRequest> captor = ArgumentCaptor.forClass(RefundRequest.class);
+    verify(walletClient).refundForRecovery(captor.capture(), anyString());
+    assertThat(captor.getValue().getOriginalTransactionId())
+        .as("null transactionId from checkResult is passed through as-is")
+        .isNull();
+  }
+
   private PaymentIntent buildUncertainIntent(Long id) {
     LocalDateTime now = LocalDateTime.now();
     return PaymentIntent.builder()

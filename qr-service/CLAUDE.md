@@ -74,7 +74,7 @@ qr-service/src/main/java/com/ssafy/keeping/qr/
 | `PaymentIntentService.approve` | PIN 검증 → 자금 캡처 → 상태 전이 → 양쪽 알림 |
 | `FundsService.capture` | `WalletClient.capture` 호출. 타임아웃/서킷 오픈 → Intent.UNCERTAIN |
 | `PaymentRecoveryService` | `@Scheduled(10s)`. UNCERTAIN Intent 자동 복구 (2-phase: 외부 호출 트랜잭션 분리 → 짧은 저장 트랜잭션) |
-| `WalletClient` | `capture`/`restore`/`checkPaymentForRecovery`/`refundForRecovery`. 용도별 RestTemplate 분리 |
+| `WalletClient` | `capture`/`checkPaymentForRecovery`/`refundForRecovery`. 용도별 RestTemplate 분리 |
 | `CustomerClient` | PIN 검증 (monolith 위임) |
 | `StoreClient`/`MenuClient` | 캐시 모드별(NONE/CACHE_ASIDE/WRITE_THROUGH) 조회 |
 | `CacheWarmingService` | 시작 시 Store/Menu 전량 Redis 적재 (WRITE_THROUGH 전용) |
@@ -129,7 +129,6 @@ qr-service/src/main/java/com/ssafy/keeping/qr/
 - `/internal/customers/{id}/pin-verify`
 - `/internal/wallets/{walletId}/stores/{storeId}/balance`
 - `/internal/wallets/{walletId}/stores/{storeId}/capture`
-- `/internal/wallets/{walletId}/stores/{storeId}/restore`
 - `/internal/wallets/{walletId}/refund`
 - `/internal/payments/check?idempotencyKey=`
 - `/internal/stores/{storeId}`, `/internal/stores/all`

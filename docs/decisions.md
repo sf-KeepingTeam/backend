@@ -6,3 +6,6 @@
 
 | 날짜 | 결정 | 이유 |
 |---|---|---|
+| 2026-08-21 | LOT 만료 표현: `LotStatus.EXPIRED` 대신 컬럼 2개(`expired_settled_at`, `expired_amount`) + `amount_remaining=0` | DDL CHECK 제약 재작성 회피 + GROUP 지갑에 `customer_id` 없음 (ADR-003) |
+| 2026-08-21 | `lotLeft != 0` 3단계 전환 (즉시 롤백 대신 관측→실측→플래그) | 어긋난 고객 전원 결제 차단 방지. 발생원을 먼저 막고 실측 0 후 전환 |
+| 2026-08-21 | `wallet_store_balances` 유지 (제거 안 함) | balance 행이 결제의 직렬화 앵커(단일행 비관락). 제거 시 결제 락 구조 재설계 필요 |

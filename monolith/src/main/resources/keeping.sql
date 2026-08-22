@@ -290,7 +290,7 @@ CREATE TABLE `transactions` (
   `related_wallet_id`   BIGINT         NULL,                            -- 지갑 간 공유/회수 시 상대 지갑
   `customer_id`         BIGINT         NOT NULL,                        -- 거래 주체(고객)
   `store_id`            BIGINT         NOT NULL,                        -- 가게(충전/사용이 귀속되는 상점)
-  `transaction_type`    ENUM('CHARGE','USE','TRANSFER_IN','TRANSFER_OUT','CANCEL_CHARGE','CANCEL_USE') NOT NULL,
+  `transaction_type`    ENUM('CHARGE','USE','TRANSFER_IN','TRANSFER_OUT','CANCEL_CHARGE','CANCEL_USE','REFUND') NOT NULL,
   `amount`              BIGINT UNSIGNED  NOT NULL,                        -- 거래 금액(양수 권장)
   `created_at`          DATETIME(3)    NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `transaction_unique_no` VARCHAR(50)    NULL,                            -- 가상은행망 결제 고유번호(충전만 사용)
@@ -340,6 +340,10 @@ CREATE TABLE `wallet_store_lot` (
   `lot_status`            ENUM('ACTIVE','CANCELED') NOT NULL DEFAULT 'ACTIVE',
   `canceled_at`           DATETIME(3)    NULL,
   `cancel_tx_id`          BIGINT         NULL,
+
+  -- 만료 정산 (v2 Wave 1)
+  `expired_settled_at`    DATETIME(3)    NULL     COMMENT '만료분을 balance에서 차감한 시각(멱등 마커)',
+  `expired_amount`        BIGINT UNSIGNED NULL    COMMENT '만료 시점 잔량(소멸액)',
   
   PRIMARY KEY (`lot_id`),
 
@@ -382,7 +386,8 @@ CREATE TABLE `wallet_store_lot` (
   UNIQUE KEY `uq_charge_origin` (`charge_origin_key`),
 
   KEY `idx_lot_wallet_store` (`wallet_id`,`store_id`),
-  KEY `idx_lot_origin_tx` (`origin_charge_tx_id`)
+  KEY `idx_lot_origin_tx` (`origin_charge_tx_id`),
+  KEY `idx_lot_expiry_sweep` (`expired_settled_at`,`expired_at`,`lot_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `wallet_lot_moves` (

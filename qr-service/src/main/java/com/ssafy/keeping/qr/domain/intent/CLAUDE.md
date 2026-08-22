@@ -83,4 +83,4 @@ PaymentIntentService.approve
 - `domain/idempotency/CLAUDE.md` — 멱등성 키 처리 철학.
 - `domain/qr/CLAUDE.md` — initiate 입력(세션 토큰) 발급자.
 - `acl/CLAUDE.md` — `WalletClient`/`CustomerClient`/`StoreClient`/`MenuClient` 타임아웃·Circuit Breaker.
-- monolith `domain/wallet/CLAUDE.md` — `capture`/`restore`/`refund` 엔드포인트 상대쪽.
+- monolith `domain/wallet/CLAUDE.md` — `capture`/`refund` 엔드포인트 상대쪽.

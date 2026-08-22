@@ -63,6 +63,12 @@ public class WalletStoreLot {
   @Column(name = "lot_status", nullable = false, length = 20)
   private LotStatus lotStatus;
 
+  @Column(name = "expired_settled_at")
+  private LocalDateTime expiredSettledAt;
+
+  @Column(name = "expired_amount")
+  private Long expiredAmount;
+
   @Column(name = "canceled_at")
   private LocalDateTime canceledAt;
 
@@ -97,5 +103,15 @@ public class WalletStoreLot {
   // 이 부분은 lot_status 필드가 새로 추가되었습니다. 그래서 나중에 확인하고 변경하겠습니다.
   public void markAsCanceled() {
     this.lotStatus = LotStatus.CANCELED;
+  }
+
+  /** 만료 정산. 잔량을 expired_amount로 옮기고 0으로 만든다. @return 소멸액 */
+  public long settleExpired(LocalDateTime now) {
+    if (this.expiredSettledAt != null) return 0L; // 멱등
+    long amount = this.amountRemaining;
+    this.expiredAmount = amount;
+    this.amountRemaining = 0L;
+    this.expiredSettledAt = now;
+    return amount;
   }
 }

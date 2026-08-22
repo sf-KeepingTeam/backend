@@ -149,11 +149,6 @@ public class FundsService {
         .toString();
   }
 
-  /** 자금 복원 (결제 취소 시) */
-  public void restore(Long walletId, Long storeId, Long amount) {
-    walletClient.restore(walletId, storeId, amount);
-  }
-
   public static class FundsResult {
     private final boolean sufficient;
     private final boolean policyOk;

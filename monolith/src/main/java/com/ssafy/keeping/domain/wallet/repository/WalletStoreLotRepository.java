@@ -17,6 +17,53 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface WalletStoreLotRepository extends JpaRepository<WalletStoreLot, Long> {
 
+  /** 만료 배치 1단계: 락 없이 미정산 만료 lot의 (walletId, storeId) 후보 쌍을 뽑는다. */
+  @Query(
+      value =
+          """
+            SELECT DISTINCT l.wallet_id, l.store_id
+              FROM wallet_store_lot l
+             WHERE l.lot_status = 'ACTIVE'
+               AND l.expired_at <= :now
+               AND l.expired_settled_at IS NULL
+             LIMIT :maxGroups
+            """,
+      nativeQuery = true)
+  List<Object[]> findExpiryCandidatePairs(
+      @Param("now") LocalDateTime now, @Param("maxGroups") int maxGroups);
+
+  /** 만료 배치 2단계: 특정 (walletId, storeId)의 미정산 만료 lot을 FOR UPDATE SKIP LOCKED로 잠근다. */
+  @Query(
+      value =
+          """
+            SELECT l.*
+              FROM wallet_store_lot l
+             WHERE l.wallet_id = :walletId
+               AND l.store_id  = :storeId
+               AND l.lot_status = 'ACTIVE'
+               AND l.expired_at <= :now
+               AND l.expired_settled_at IS NULL
+               FOR UPDATE SKIP LOCKED
+            """,
+      nativeQuery = true)
+  List<WalletStoreLot> lockUnsettledExpiredLots(
+      @Param("walletId") Long walletId,
+      @Param("storeId") Long storeId,
+      @Param("now") LocalDateTime now);
+
+  /** 대사용: ACTIVE lot의 amountRemaining 합계 (walletId, storeId 기준). */
+  @Query(
+      """
+        SELECT COALESCE(SUM(l.amountRemaining), 0)
+          FROM WalletStoreLot l
+         WHERE l.wallet.walletId = :walletId
+           AND l.store.storeId   = :storeId
+           AND l.lotStatus = com.ssafy.keeping.domain.wallet.constant.LotStatus.ACTIVE
+      """)
+  long sumActiveLotRemaining(
+      @Param("walletId") Long walletId, @Param("storeId") Long storeId);
+
+
   Optional<WalletStoreLot> findByOriginChargeTransaction(Transaction originChargeTransaction);
 
   /** 결제 취소 시 정합성 보장을 위한 비관적 락 SELECT ... FOR UPDATE로 해당 로트를 독점적으로 잠금 */

@@ -10,7 +10,7 @@ acl/
 ├── MenuClient.java          CACHE_MODE에 따라 조회 분기
 ├── NotificationClient.java  monolith /internal/notifications/send
 ├── StoreClient.java         CACHE_MODE에 따라 조회 분기
-├── WalletClient.java        capture / restore / check / refundForRecovery
+├── WalletClient.java        capture / check / refundForRecovery
 ├── cache/
 │   ├── MenuCacheRepository.java
 │   └── StoreCacheRepository.java
@@ -47,7 +47,6 @@ acl/
 - `/internal/customers/{id}/pin-verify`
 - `/internal/wallets/{walletId}/stores/{storeId}/balance`
 - `/internal/wallets/{walletId}/stores/{storeId}/capture`
-- `/internal/wallets/{walletId}/stores/{storeId}/restore`
 - `/internal/wallets/{walletId}/refund`
 - `/internal/payments/check?idempotencyKey=`
 - `/internal/stores/{storeId}`, `/internal/stores/all`
@@ -58,7 +57,7 @@ acl/
 
 | 파일 | 역할 |
 |---|---|
-| `WalletClient` | 용도별 RestTemplate 분리. `capture`/`restore`는 write, `checkPaymentForRecovery`/`refundForRecovery`는 recovery |
+| `WalletClient` | 용도별 RestTemplate 분리. `capture`는 write, `checkPaymentForRecovery`/`refundForRecovery`는 recovery |
 | `CustomerClient` | PIN 검증 단일 책임 |
 | `StoreClient`/`MenuClient` | CACHE_MODE에 따라 캐시 → monolith fallback |
 | `NotificationClient` | 고객/점주 알림 요청. 실패는 경고 로그만 |

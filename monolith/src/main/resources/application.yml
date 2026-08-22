@@ -83,3 +83,16 @@ fcm:
   service-account-file: classpath:firebase/keeping-firebase-adminsdk.json
   project-id: "keeping-6130e"
 
+# 지갑 원장 (Wallet-Ledger) 설정
+wallet:
+  expiry:
+    lazy-enabled: true
+    batch-size: 500
+    max-groups-per-run: 200
+    cron: "0 10 3 * * *"
+  capture:
+    strict-lot: false
+  reconcile:
+    cron: "0 40 3 * * *"
+    page-size: 1000
+
