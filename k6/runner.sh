@@ -91,6 +91,40 @@ for x in r: print(f\"    {float(x['value'][1]):>12.4f}  {key(x['metric'])}\")
 "
 }
 
+# ── 대상 생존 확인 ──────────────────────────────────────────────────────────
+#  ★ 결함 8 (2026-08-22 발견)
+#     B0/B1 러닝에서 qr-service 가 죽은 채로 4분간 부하를 계속 걸었다.
+#     통제변인 조회에 qr-service 가 안 나왔는데 러너가 그냥 진행했다.
+#     결과는 전부 0-null 이었고 러닝 2회를 통째로 버렸다.
+#     → 부하 전·후로 두 서비스가 살아있는지 확인한다.
+alive() {  # alive <setup>  → "monolith qr-service" 중 up 인 것들
+  curl -s --get "$PROM/api/v1/query" \
+    --data-urlencode "query=up{setup=\"$1\"}" \
+  | python3 -c "
+import sys,json
+try: r=json.load(sys.stdin)['data']['result']
+except Exception: sys.exit()
+print(' '.join(sorted(x['metric'].get('service','?') for x in r if x['value'][1]=='1')))
+"
+}
+
+require_alive() {  # require_alive <시점라벨>
+  local got; got=$(alive "$SETUP")
+  for svc in monolith qr-service; do
+    case " $got " in *" $svc "*) ;; *)
+      echo
+      echo "✗✗✗ [$1] $svc 가 Prometheus 에서 up 이 아니다 (감지: ${got:-없음})"
+      echo "    대상이 죽었거나 스크랩이 안 된다. 러닝을 중단한다."
+      echo "    확인: curl -s $PROM/api/v1/targets | grep -o 'health\":\"[a-z]*'"
+      echo "         해당 서버에서  docker ps  /  free -h  /  journalctl --list-boots"
+      { echo; echo "★ 이 러닝은 무효다 — [$1] 시점에 $svc 가 down (감지: ${got:-없음})"; } >> "$OUT/meta.txt"
+      return 1
+    ;; esac
+  done
+  echo "  ✓ [$1] 생존 확인: $got"
+  return 0
+}
+
 echo "════════════════════════════════════════════════════════"
 echo " 러닝 $LABEL  |  $SETUP  |  배경 ${BG_VUS}VU  결제 ${QR_VUS}VU  ${DUR}"
 echo " 모드: $RUN_MODE  (결제 executor = $QR_MODE)"
@@ -146,6 +180,9 @@ for m in hikaricp_connections_max tomcat_threads_config_max_threads; do
   pq "$m{setup=\"$SETUP\"}" | tee -a "$OUT/meta.txt"
 done
 
+# ── 1-1. 사전 생존 확인 (결함 8) ───────────────────────────────────────────
+require_alive "사전" || { echo "→ 러닝 $LABEL 중단. 대상을 살린 뒤 다시 실행하라."; exit 2; }
+
 # ── 2. 부하 실행 ───────────────────────────────────────────────────────────
 cd "$K6DIR"
 BGPID=""
@@ -169,6 +206,10 @@ echo "▸ 결제 종료 $(date +%H:%M:%S)  (결제 구간 $(( QEND - QSTART ))�
 [ -n "$BGPID" ] && { echo "▸ 배경부하 종료 대기"; wait "$BGPID" 2>/dev/null; }
 WEND=$(date +%s)
 sleep 10   # 마지막 스크랩
+
+# ── 사후 생존 확인 (결함 8) ────────────────────────────────────────────────
+POST_OK=1
+require_alive "사후" || POST_OK=0
 
 # legacy 는 1차와 동일한 창(러너 시작~종료+30초)을 써야 숫자가 대응된다
 if [ "$RUN_MODE" = "legacy" ]; then
@@ -271,4 +312,11 @@ echo
 echo "──────── ★ 실제 투입량 ────────"
 grep -E "이터레이션|RPS|총 HTTP|최대 동시 VU|실패율" "$OUT/volume.txt" || true
 echo
+if [ "$POST_OK" -eq 0 ]; then
+  echo
+  echo "████████████████████████████████████████████████████████"
+  echo "  ★ 이 러닝은 무효다 — 러닝 도중 대상이 죽었다"
+  echo "     결과를 result.md 에 인용하지 말 것. meta.txt 에 기록됨"
+  echo "████████████████████████████████████████████████████████"
+fi
 echo "저장됨: $OUT/   meta.txt · metrics.txt · metrics.csv · volume.txt · bg/qr.{log,json}"
