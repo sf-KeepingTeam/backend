@@ -1,0 +1,35 @@
+# =============================================================================
+# 2-EC2 부하측정용 Prometheus 설정 (loadgen EC2에서 실행)
+# =============================================================================
+# 기존 monitoring/prometheus.yml 은 docker-compose.msa.yml(단일 호스트) 전용이며
+# 타겟이 컨테이너 이름(monolith:8080 / qr-service:8082)이라 2-EC2에서는 동작하지 않는다.
+# 이 파일은 Private IP 기준으로 두 EC2를 직접 긁는다.
+#
+# envsubst 변수: MONOLITH_HOST, QR_SERVICE_HOST (둘 다 Private IP)
+
+global:
+  # 부하측정용으로 5초. 포화 구간의 순간 피크(hikaricp_connections_pending 등)를
+  # 15초 간격으로는 놓칠 수 있다.
+  scrape_interval: 5s
+  scrape_timeout: 4s
+  external_labels:
+    setup: keeping-2ec2
+
+scrape_configs:
+  - job_name: 'monolith'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['${MONOLITH_HOST}:8080']
+        labels:
+          service: monolith
+
+  - job_name: 'qr-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['${QR_SERVICE_HOST}:8081']   # 8082 아님
+        labels:
+          service: qr-service
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

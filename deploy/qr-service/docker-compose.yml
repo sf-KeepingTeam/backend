@@ -16,7 +16,23 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - INTERNAL_AUTH_TOKEN=${INTERNAL_AUTH_TOKEN}
       - LOADTEST_BACKDOOR_ENABLED=${LOADTEST_BACKDOOR_ENABLED:-false}
-      - HIKARI_MAX_POOL_SIZE=15
+      - HIKARI_MAX_POOL_SIZE=${HIKARI_MAX_POOL_SIZE:-15}
+
+      # ---------------------------------------------------------------------
+      # 캐시 모드 — 측정 구성 B/C를 가르는 핵심 변수
+      #   NONE          = 구성 B (매번 monolith에 Store/Menu 조회)
+      #   WRITE_THROUGH = 구성 C (현재 구조. webhook으로 qr-redis에 밀어넣음)
+      #   CACHE_ASIDE   = (미사용)
+      # ⚠️ 이 변수가 compose에 없어서 .env만 고쳐도 컨테이너에 전달되지 않던 문제 수정.
+      # ---------------------------------------------------------------------
+      - CACHE_MODE=${CACHE_MODE:-WRITE_THROUGH}
+      - CACHE_WARMING_ENABLED=${CACHE_WARMING_ENABLED:-true}
+
+      # 부하테스트 백도어를 쓰려면 프로필이 필요하다 (기본은 application.yml의 docker 설정).
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-docker}
+
+      # 측정 통제변인 — 적용 확인: GET /actuator/metrics/tomcat.threads.config.max
+      - SERVER_TOMCAT_THREADS_MAX=${SERVER_TOMCAT_THREADS_MAX:-200}
     depends_on:
       mysql:
         condition: service_healthy

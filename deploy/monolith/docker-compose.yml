@@ -7,7 +7,9 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - SPRING_PROFILES_ACTIVE=prod
+      # 부하테스트 백도어(X-Test-User-Id 헤더 인증)를 쓰려면 loadtest 프로필이 필요하다.
+      # 측정 종료 후 반드시 prod 단독으로 되돌릴 것.
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-prod}
       - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/ssafy_fintech_db?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true
       - SPRING_DATASOURCE_USERNAME=root
       - SPRING_DATASOURCE_PASSWORD=${MYSQL_ROOT_PASSWORD}
@@ -19,6 +21,28 @@ services:
       # qr-service는 다른 EC2. 반드시 qr EC2 Private IP:8081로 설정 (미설정 시 캐시 동기화 깨짐)
       - QR_SERVICE_URL=${QR_SERVICE_URL}
       - QR_WEBHOOK_ENABLED=${QR_WEBHOOK_ENABLED:-true}
+
+      # ---------------------------------------------------------------------
+      # 부하테스트 백도어 (⚠️ 운영에서는 반드시 false)
+      # ---------------------------------------------------------------------
+      - LOADTEST_BACKDOOR_ENABLED=${LOADTEST_BACKDOOR_ENABLED:-false}
+
+      # ---------------------------------------------------------------------
+      # 측정 통제변인 (Spring relaxed binding으로 yml을 오버라이드. 코드 수정 없음)
+      # ---------------------------------------------------------------------
+      # 톰캣 스레드 수. yml에 설정이 없어 Spring 기본 200으로 동작하던 값.
+      #   200 = 기본 / 20 = 스레드풀 포화를 강제하는 통제변인
+      # 적용 확인: GET /actuator/metrics/tomcat.threads.config.max
+      - SERVER_TOMCAT_THREADS_MAX=${SERVER_TOMCAT_THREADS_MAX:-200}
+
+      # Hikari 풀 크기. application-prod.yml에 20이 하드코딩되어 있다(플레이스홀더 없음).
+      # 톰캣 200 : DB 20 = 10:1 이라 그대로 재면 병목이 DB로 나오는 게 자명하다.
+      #   20 = 현행 / 60 = 확대. 20→60에서 병목이 옮겨가는지가 Q1의 핵심 근거.
+      # 적용 확인: GET /actuator/metrics/hikaricp.connections.max
+      - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=${SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE:-20}
+
+      # 최초 1회 스키마 생성 시에만 update. 이후 validate 로 되돌릴 것.
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=${SPRING_JPA_HIBERNATE_DDL_AUTO:-validate}
     depends_on:
       mysql:
         condition: service_healthy
