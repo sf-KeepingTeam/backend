@@ -31,7 +31,7 @@
  *  - approve_time:   3단계 소요시간 (캐싱 불가, 모놀리스 동기 호출 필수)
  *
  *  [실행 방법]
- *  k6 run -e BASE_URL=http://<NGINX_IP> 02-qr-payment-flow.js
+ *  k6 run -e QR_BASE_URL=http://<payment Private IP>:8081 02-qr-payment-flow.js
  *
  *  VU 수와 시간을 변경하려면:
  *  k6 run -e BASE_URL=http://<NGINX_IP> -e QR_VUS=100 -e QR_DURATION=5m 02-qr-payment-flow.js
@@ -41,7 +41,7 @@ import http from 'k6/http';
 import { check, sleep, group } from 'k6';
 import { Trend, Counter, Rate } from 'k6/metrics';
 import {
-    BASE_URL,
+    QR_BASE_URL,
     TEST_DATA,
     getTestHeaders,
     generateUUID,
@@ -124,7 +124,7 @@ export default function () {
         // ──────────────────────────────────────────
         const qrStart = Date.now();
         const qrRes = http.post(
-            `${BASE_URL}/api/qr`,
+            `${QR_BASE_URL}/api/qr`,
             JSON.stringify({
                 walletId: walletId,
                 bindStoreId: storeId,
@@ -158,7 +158,7 @@ export default function () {
         // ──────────────────────────────────────────
         const scanStart = Date.now();
         const scanRes = http.post(
-            `${BASE_URL}/api/qr/${tokenId}/scan`,
+            `${QR_BASE_URL}/api/qr/${tokenId}/scan`,
             null,
             { headers: ownerHeaders }
         );
@@ -200,7 +200,7 @@ export default function () {
 
         const intentStart = Date.now();
         const intentRes = http.post(
-            `${BASE_URL}/cpqr/${sessionToken}/initiate`,
+            `${QR_BASE_URL}/cpqr/${sessionToken}/initiate`,
             JSON.stringify({
                 storeId: storeId,
                 orderItems: [{ menuId: menuId, quantity: 1 }],
@@ -247,7 +247,7 @@ export default function () {
 
         const approveStart = Date.now();
         const approveRes = http.post(
-            `${BASE_URL}/payments/${intentId}/approve`,
+            `${QR_BASE_URL}/payments/${intentId}/approve`,
             JSON.stringify({
                 pin: TEST_DATA.PIN,
             }),
