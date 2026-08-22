@@ -6,3 +6,4 @@
 
 | 날짜 | 실패 내용 | 원인 | 승격 (훅/지침/보류) |
 |---|---|---|---|
+| 2026-08-21 | QrToken 직렬화 비대칭으로 scan 500 | isExpired()가 getter 모양이라 Jackson이 프로퍼티로 인식 | 지침: Redis 저장 모델의 파생 메서드에 @JsonIgnore + 왕복 테스트 의무화. redisObjectMapper 분리로 방어막 추가 |

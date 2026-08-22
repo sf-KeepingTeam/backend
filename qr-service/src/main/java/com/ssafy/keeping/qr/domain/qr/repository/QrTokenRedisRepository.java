@@ -5,14 +5,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ssafy.keeping.qr.domain.qr.model.QrToken;
 import java.time.Duration;
 import java.util.Optional;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Repository;
 
 @Slf4j
 @Repository
-@RequiredArgsConstructor
 public class QrTokenRedisRepository {
 
   private static final String PREFIX = "qrToken:";
@@ -21,6 +20,13 @@ public class QrTokenRedisRepository {
 
   private final RedisTemplate<String, String> redisTemplate;
   private final ObjectMapper objectMapper;
+
+  public QrTokenRedisRepository(
+      RedisTemplate<String, String> redisTemplate,
+      @Qualifier("redisObjectMapper") ObjectMapper objectMapper) {
+    this.redisTemplate = redisTemplate;
+    this.objectMapper = objectMapper;
+  }
 
   public void save(QrToken token) {
     try {

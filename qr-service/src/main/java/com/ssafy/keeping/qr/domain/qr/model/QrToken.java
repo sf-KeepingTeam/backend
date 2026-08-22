@@ -1,5 +1,7 @@
 package com.ssafy.keeping.qr.domain.qr.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -10,6 +12,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class QrToken {
 
   private String tokenId;
@@ -24,6 +27,7 @@ public class QrToken {
 
   private Long ttl;
 
+  @JsonIgnore
   public boolean isExpired() {
     return LocalDateTime.now().isAfter(expiresAt);
   }
