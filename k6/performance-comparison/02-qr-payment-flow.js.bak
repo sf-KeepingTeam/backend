@@ -31,7 +31,7 @@
  *  - approve_time:   3단계 소요시간 (캐싱 불가, 모놀리스 동기 호출 필수)
  *
  *  [실행 방법]
- *  k6 run -e QR_BASE_URL=http://<payment Private IP>:8081 02-qr-payment-flow.js
+ *  k6 run -e BASE_URL=http://<NGINX_IP> 02-qr-payment-flow.js
  *
  *  VU 수와 시간을 변경하려면:
  *  k6 run -e BASE_URL=http://<NGINX_IP> -e QR_VUS=100 -e QR_DURATION=5m 02-qr-payment-flow.js
@@ -41,7 +41,7 @@ import http from 'k6/http';
 import { check, sleep, group } from 'k6';
 import { Trend, Counter, Rate } from 'k6/metrics';
 import {
-    QR_BASE_URL,
+    BASE_URL,
     TEST_DATA,
     getTestHeaders,
     generateUUID,
@@ -65,45 +65,25 @@ const paymentFailures = new Counter('payment_failures');    // 결제 실패 수
 const QR_MAX_VUS = parseInt(__ENV.QR_VUS || '50');
 const QR_DURATION = __ENV.QR_DURATION || '3m';
 
-// ── QR_MODE ────────────────────────────────────────────────────────────────
-//  'ramp'     (기본, 기존 동작) 0 → VU/2 → VU → VU 유지 → 0 계단
-//  'constant' 처음부터 끝까지 목표 VU 고정
-//
-//  ★ 왜 constant 가 필요한가 (2026-08-22 발견)
-//
-//  ramp 모드에서 "결제 30 VU · 4m" 라고 적었지만 실제로는:
-//    0→15 (80초) · 15→30 (80초) · 30 유지 (80초) · 30→0 (30초)  = 총 270초
-//  평균 VU 는 약 19.4 이고, 30 VU 인 구간은 270초 중 80초뿐이다.
-//  그런데 k6 가 출력하는 p95 는 **전 구간 합산**이라 램프업의 한산한 구간이
-//  섞여 들어가 **지연이 실제보다 좋게 나온다.**
-//
-//  또 배경부하(constant, DUR)와 길이가 달라 러닝 후반에 배경부하가 먼저
-//  끝나버린다. 두 부하의 창을 맞추려면 결제도 constant 여야 한다.
-const QR_MODE = __ENV.QR_MODE || 'ramp';
-
 // 램프업 시간을 전체의 1/3로 설정
 const rampDuration = Math.max(30, Math.floor(parseDuration(QR_DURATION) / 3));
 
-const qrScenario = QR_MODE === 'constant'
-    ? { executor: 'constant-vus', vus: QR_MAX_VUS, duration: QR_DURATION }
-    : {
-        executor: 'ramping-vus',
-        startVUs: 0,
-        stages: [
-            // Warm-up: 0에서 목표 VU까지 점진적 증가
-            { duration: `${rampDuration}s`, target: Math.floor(QR_MAX_VUS / 2) },
-            // Ramp-up: 목표 VU까지 증가
-            { duration: `${rampDuration}s`, target: QR_MAX_VUS },
-            // Steady: 목표 VU 유지 (핵심 측정 구간)
-            { duration: `${rampDuration}s`, target: QR_MAX_VUS },
-            // Ramp-down: 점진적 감소
-            { duration: '30s', target: 0 },
-        ],
-      };
-
 export const options = {
     scenarios: {
-        qr_payment: qrScenario,
+        qr_payment: {
+            executor: 'ramping-vus',
+            startVUs: 0,
+            stages: [
+                // Warm-up: 0에서 목표 VU까지 점진적 증가
+                { duration: `${rampDuration}s`, target: Math.floor(QR_MAX_VUS / 2) },
+                // Ramp-up: 목표 VU까지 증가
+                { duration: `${rampDuration}s`, target: QR_MAX_VUS },
+                // Steady: 목표 VU 유지 (핵심 측정 구간)
+                { duration: `${rampDuration}s`, target: QR_MAX_VUS },
+                // Ramp-down: 점진적 감소
+                { duration: '30s', target: 0 },
+            ],
+        },
     },
     thresholds: {
         'qr_create_time': ['p(95)<500'],     // QR 생성: 500ms 이내
@@ -144,7 +124,7 @@ export default function () {
         // ──────────────────────────────────────────
         const qrStart = Date.now();
         const qrRes = http.post(
-            `${QR_BASE_URL}/api/qr`,
+            `${BASE_URL}/api/qr`,
             JSON.stringify({
                 walletId: walletId,
                 bindStoreId: storeId,
@@ -178,7 +158,7 @@ export default function () {
         // ──────────────────────────────────────────
         const scanStart = Date.now();
         const scanRes = http.post(
-            `${QR_BASE_URL}/api/qr/${tokenId}/scan`,
+            `${BASE_URL}/api/qr/${tokenId}/scan`,
             null,
             { headers: ownerHeaders }
         );
@@ -220,7 +200,7 @@ export default function () {
 
         const intentStart = Date.now();
         const intentRes = http.post(
-            `${QR_BASE_URL}/cpqr/${sessionToken}/initiate`,
+            `${BASE_URL}/cpqr/${sessionToken}/initiate`,
             JSON.stringify({
                 storeId: storeId,
                 orderItems: [{ menuId: menuId, quantity: 1 }],
@@ -267,7 +247,7 @@ export default function () {
 
         const approveStart = Date.now();
         const approveRes = http.post(
-            `${QR_BASE_URL}/payments/${intentId}/approve`,
+            `${BASE_URL}/payments/${intentId}/approve`,
             JSON.stringify({
                 pin: TEST_DATA.PIN,
             }),
