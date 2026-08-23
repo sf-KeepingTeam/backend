@@ -61,6 +61,8 @@ logging:
 
 # 결제 설정 (토스페이먼츠)
 payment:
+  pin:
+    token-ttl-seconds: 60   # PIN 검증 토큰 수명(초). qr-service approve 시 사용
   provider: toss  # 기본 결제 제공자 (toss, kakao, naver 등)
   toss:
     mode: ${TOSS_MODE:stub}   # stub(기본, 로컬/테스트) | real(실제 토스 API 호출)

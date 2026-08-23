@@ -95,6 +95,16 @@ logging:
 slack:
   webhook-url: ${SLACK_WEBHOOK_URL:}
 
+# 결제 튜닝 (PaymentTuningProperties)
+payment:
+  notification:
+    async: true
+  approve:
+    split-transaction: true
+  pin:
+    token-enabled: true
+    token-ttl-seconds: 60
+
 # 로드테스트 백도어 (테스트용)
 loadtest:
   backdoor:

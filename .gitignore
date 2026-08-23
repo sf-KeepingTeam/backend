@@ -5,6 +5,7 @@ build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 docs/**/*.md
+!docs/v3/**/*.md
 !**/CLAUDE.md
 !.claude/commands/*.md
 **/gradle.properties

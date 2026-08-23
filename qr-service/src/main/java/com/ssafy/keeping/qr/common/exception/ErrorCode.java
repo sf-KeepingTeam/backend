@@ -44,6 +44,12 @@ public enum ErrorCode {
   PIN_REQUIRED(HttpStatus.BAD_REQUEST, "결제 비밀번호(PIN)는 필수입니다."),
   PIN_INVALID(HttpStatus.UNAUTHORIZED, "결제 비밀번호(PIN)가 올바르지 않습니다."),
 
+  // PIN 토큰 검증 관련
+  PIN_TOKEN_INVALID(HttpStatus.UNAUTHORIZED, "PIN 토큰이 유효하지 않습니다."),
+  PIN_TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "PIN 토큰이 만료되었습니다."),
+  PIN_TOKEN_INTENT_MISMATCH(HttpStatus.FORBIDDEN, "PIN 토큰의 결제 요청 ID가 일치하지 않습니다."),
+  PIN_TOKEN_REUSED(HttpStatus.CONFLICT, "이미 사용된 PIN 토큰입니다."),
+
   // 자금/한도 관련
   FUNDS_INSUFFICIENT(HttpStatus.PAYMENT_REQUIRED, "잔액이 부족합니다."),
   FUNDS_CHANGED_BY_OTHER_PAYMENT(HttpStatus.CONFLICT, "다른 결제로 잔액이 변경되었습니다."),

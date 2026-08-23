@@ -102,13 +102,14 @@ public class PinAuthService {
       return false;
     }
 
-    // 성공 처리: 실패 카운터 리셋 + 성공 시각 기록
-    row.setFailedCount(0);
-    row.setLockedUntil(null);
-    row.setLastVerifyAt(now);
-    row.setUpdatedAt(now);
-
-    customerPinAuthRepository.save(row);
+    // 성공 처리: 이미 정상 상태면 불필요한 UPDATE 생략 (§4-6 option a)
+    // last_verify_at 은 codebase 내 읽는 곳이 없으므로 갱신하지 않는다.
+    if (row.getFailedCount() != 0 || row.getLockedUntil() != null) {
+      row.setFailedCount(0);
+      row.setLockedUntil(null);
+      row.setUpdatedAt(now);
+      customerPinAuthRepository.save(row);
+    }
     return true;
   }
 

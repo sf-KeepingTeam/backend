@@ -26,6 +26,9 @@ import com.ssafy.keeping.qr.domain.intent.model.PaymentIntent;
 import com.ssafy.keeping.qr.domain.intent.model.PaymentIntentItem;
 import com.ssafy.keeping.qr.domain.intent.repository.PaymentIntentItemRepository;
 import com.ssafy.keeping.qr.domain.intent.repository.PaymentIntentRepository;
+import com.ssafy.keeping.qr.config.PaymentTuningProperties;
+import com.ssafy.keeping.qr.domain.intent.event.PaymentApprovedEvent;
+import com.ssafy.keeping.qr.domain.intent.event.PaymentRequestedEvent;
 import com.ssafy.keeping.qr.domain.qr.model.QrScanSession;
 import com.ssafy.keeping.qr.domain.qr.service.QrTokenService;
 import java.time.Clock;
@@ -34,9 +37,12 @@ import java.util.*;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Slf4j
 @Service
@@ -53,6 +59,11 @@ public class PaymentIntentService {
   private final NotificationClient notificationClient;
   private final ObjectMapper canonicalObjectMapper;
   private final Clock clock;
+  private final ApplicationEventPublisher eventPublisher;
+  private final PaymentTuningProperties tuningProperties;
+  private final ApproveTransactionHelper approveHelper;
+  private final TransactionTemplate transactionTemplate;
+  private final PinTokenVerifier pinTokenVerifier;
 
   public PaymentIntentService(
       PaymentIntentRepository intentRepository,
@@ -65,7 +76,12 @@ public class PaymentIntentService {
       CustomerClient customerClient,
       NotificationClient notificationClient,
       @Qualifier("canonicalObjectMapper") ObjectMapper canonicalObjectMapper,
-      Clock clock) {
+      Clock clock,
+      ApplicationEventPublisher eventPublisher,
+      PaymentTuningProperties tuningProperties,
+      ApproveTransactionHelper approveHelper,
+      TransactionTemplate transactionTemplate,
+      PinTokenVerifier pinTokenVerifier) {
     this.intentRepository = intentRepository;
     this.itemRepository = itemRepository;
     this.idempotencyService = idempotencyService;
@@ -77,6 +93,11 @@ public class PaymentIntentService {
     this.notificationClient = notificationClient;
     this.canonicalObjectMapper = canonicalObjectMapper;
     this.clock = clock;
+    this.eventPublisher = eventPublisher;
+    this.tuningProperties = tuningProperties;
+    this.approveHelper = approveHelper;
+    this.transactionTemplate = transactionTemplate;
+    this.pinTokenVerifier = pinTokenVerifier;
   }
 
   /** 결제 의도 생성 세션 토큰 기반 (QR 스캔 후 발급받은 토큰) */
@@ -218,19 +239,28 @@ public class PaymentIntentService {
 
     PaymentIntentDetailResponse res = PaymentIntentDetailResponse.from(intent, itemViews);
 
-    // 결제 요청 알림 - 동기 전송 (고객이 즉시 알림을 받아야 승인 가능)
-    try {
-      StoreResponse store = storeClient.getStore(intent.getStoreId()).orElse(null);
-      String storeName = store != null ? store.getStoreName() : "매장";
+    // 결제 요청 알림
+    if (tuningProperties.getNotification().isAsync()) {
+      // 비동기: 커밋 후 리스너에서 발송 (DB 커넥션 점유 없음)
+      eventPublisher.publishEvent(new PaymentRequestedEvent(
+          intent.getIntentId(), session.getCustomerId(),
+          intent.getStoreId(), intent.getAmount()));
+    } else {
+      // 동기 폴백 (payment.notification.async=false)
+      try {
+        StoreResponse store = storeClient.getStore(intent.getStoreId()).orElse(null);
+        String storeName = store != null ? store.getStoreName() : "매장";
 
-      String notificationContent =
-          String.format("%s에서 %,d원 결제 요청이 도착했습니다.", storeName, intent.getAmount());
-      notificationClient.sendToCustomer(
-          session.getCustomerId(), "PAYMENT_REQUEST", notificationContent);
-      log.info("결제 요청 알림 전송 완료 - 손님ID: {}, 결제 금액: {}", session.getCustomerId(), intent.getAmount());
-    } catch (Exception e) {
-      log.warn("결제 요청 알림 전송 실패 - 손님ID: {}, error: {}", session.getCustomerId(), e.getMessage());
-      // 알림 실패해도 결제 시작은 성공 처리 (고객이 앱에서 직접 확인 가능)
+        String notificationContent =
+            String.format("%s에서 %,d원 결제 요청이 도착했습니다.", storeName, intent.getAmount());
+        notificationClient.sendToCustomer(
+            session.getCustomerId(), "PAYMENT_REQUEST", notificationContent);
+        log.info("결제 요청 알림 전송 완료 - 손님ID: {}, 결제 금액: {}",
+            session.getCustomerId(), intent.getAmount());
+      } catch (Exception e) {
+        log.warn("결제 요청 알림 전송 실패 - 손님ID: {}, error: {}",
+            session.getCustomerId(), e.getMessage());
+      }
     }
 
     // 멱등 완료 기록
@@ -251,103 +281,309 @@ public class PaymentIntentService {
     return PaymentIntentDetailResponse.from(intent, itemViews);
   }
 
-  /** 결제 승인 */
-  @Transactional
+  /**
+   * 결제 승인 -- 플래그에 따라 레거시/분리 경로 디스패치.
+   *
+   * <p>{@code payment.approve.split-transaction=true} (기본)이면
+   * TX-A / NO-TX / TX-B 로 트랜잭션을 분리해 DB 커넥션 점유 시간을 단축한다.
+   * {@code false}이면 기존 단일 트랜잭션 경로로 동작한다.
+   */
   public IdempotentResult<PaymentIntentDetailResponse> approve(
       UUID intentPublicId, String idempotencyKeyHeader, Long customerId, ApproveRequest req) {
-    // ═══════════════════════════════════════════════════
-    // 입력 검증
-    // ═══════════════════════════════════════════════════
+
+    // 공통 입력 검증 (트랜잭션 불필요)
     if (idempotencyKeyHeader == null || idempotencyKeyHeader.isBlank()) {
       throw new CustomException(ErrorCode.IDEMPOTENCY_KEY_REQUIRED);
     }
-    if (req == null || req.getPin() == null || req.getPin().isBlank()) {
+
+    // PIN 또는 PIN 토큰 중 하나 필수
+    boolean hasPin = req != null && req.getPin() != null && !req.getPin().isBlank();
+    boolean hasToken = req != null && req.getPinToken() != null && !req.getPinToken().isBlank();
+    if (!hasPin && !hasToken) {
       throw new CustomException(ErrorCode.PIN_REQUIRED);
     }
 
-    // ═══════════════════════════════════════════════════
-    // 멱등성 게이트
-    // ═══════════════════════════════════════════════════
-    // 멱등 바디 정규화
+    if (tuningProperties.getApprove().isSplitTransaction()) {
+      return approveSplit(intentPublicId, idempotencyKeyHeader, customerId, req);
+    } else {
+      return approveLegacy(intentPublicId, idempotencyKeyHeader, customerId, req);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  기존 단일 트랜잭션 경로 (split-transaction=false 폴백)
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * 레거시 경로: 단일 트랜잭션으로 전체 approve 를 처리한다.
+   *
+   * <p>approve() 에서 this.approveLegacy() 로 호출하면 self-invocation 이라
+   * {@code @Transactional} AOP 가 적용되지 않는다. 따라서
+   * {@link TransactionTemplate} 으로 명시적 트랜잭션 경계를 잡는다.
+   */
+  IdempotentResult<PaymentIntentDetailResponse> approveLegacy(
+      UUID intentPublicId, String idempotencyKeyHeader, Long customerId, ApproveRequest req) {
+
+    return transactionTemplate.execute(status -> {
+
+      // 멱등 바디 정규화
+      String canonicalBody = canonicalizeApproveBody(req);
+      byte[] bodyHash = IdempotencyService.sha256(canonicalBody);
+
+      UUID keyUuid;
+      try {
+        keyUuid = UUID.fromString(idempotencyKeyHeader);
+      } catch (IllegalArgumentException ex) {
+        throw new CustomException(ErrorCode.IDEMPOTENCY_KEY_INVALID);
+      }
+      String path = "/payments/" + intentPublicId + "/approve";
+      IdemBegin begin =
+          idempotencyService.beginOrLoad(
+              IdemActorType.CUSTOMER, customerId, "POST", path, keyUuid, bodyHash);
+
+      IdempotencyKey slot = begin.getRow();
+
+      if (idempotencyService.isBodyConflict(slot, bodyHash)) {
+        throw new CustomException(ErrorCode.IDEMPOTENCY_BODY_CONFLICT);
+      }
+
+      if (slot.getStatus() == IdemStatus.DONE) {
+        PaymentIntentDetailResponse replay;
+        var node = slot.getResponseJson();
+
+        if (node != null && !node.isNull()) {
+          replay = parseSnapshot(node);
+        } else if (slot.getIntentPublicId() != null) {
+          replay = rebuildFromResource(slot.getIntentPublicId());
+        } else {
+          throw new CustomException(ErrorCode.IDEMPOTENCY_REPLAY_UNAVAILABLE);
+        }
+        return IdempotentResult.okReplay(replay);
+      }
+
+      if (!begin.isCreated() && slot.getStatus() == IdemStatus.IN_PROGRESS) {
+        return IdempotentResult.acceptedWithRetryAfterSeconds(2);
+      }
+
+      // 비즈니스 검증
+      PaymentIntent intent =
+          intentRepository
+              .findByPublicId(intentPublicId)
+              .orElseThrow(() -> new CustomException(ErrorCode.PAYMENT_INTENT_NOT_FOUND));
+
+      LocalDateTime now = LocalDateTime.now(clock);
+
+      if (intent.getStatus() != PaymentStatus.PENDING) {
+        throw new CustomException(ErrorCode.PAYMENT_INTENT_STATUS_CONFLICT);
+      }
+      if (intent.getExpiresAt() != null && now.isAfter(intent.getExpiresAt())) {
+        intent.markExpired(now);
+        intentRepository.save(intent);
+        throw new CustomException(ErrorCode.PAYMENT_INTENT_EXPIRED);
+      }
+      if (!Objects.equals(intent.getCustomerId(), customerId)) {
+        throw new CustomException(ErrorCode.PAYMENT_INTENT_OWNER_MISMATCH);
+      }
+
+      // PIN 검증 — 토큰 경로 또는 기존 HTTP 경로
+      boolean useTokenPathLegacy = tuningProperties.getPin().isTokenEnabled()
+          && req.getPinToken() != null && !req.getPinToken().isBlank();
+
+      if (useTokenPathLegacy) {
+        // 토큰 로컬 검증 (JPA 리포지토리 호출 0건, Redis jti 기록만)
+        try {
+          pinTokenVerifier.verify(req.getPinToken(), intentPublicId);
+        } catch (CustomException e) {
+          intent.markDeclined(now);
+          intentRepository.save(intent);
+          throw e;
+        }
+      } else {
+        // 기존 PIN 검증 (모놀리식 서버 검사)
+        boolean pinOk = customerClient.verifyPin(customerId, req.getPin());
+        if (!pinOk) {
+          intent.markDeclined(now);
+          intentRepository.save(intent);
+          throw new CustomException(ErrorCode.PIN_INVALID);
+        }
+      }
+
+      // 자금 캡처
+      List<PaymentIntentItem> intentItems =
+          itemRepository.findByIntent_IntentId(intent.getIntentId());
+      FundsService.FundsResult funds = fundsService.capture(intent, intentItems);
+
+      if (funds.isUncertain()) {
+        log.warn("자금 캡처 UNCERTAIN - 복구 스케줄러가 처리 예정: intentId={}", intent.getIntentId());
+        throw new CustomException(ErrorCode.SERVICE_TIMEOUT);
+      }
+
+      if (!funds.isSufficient()) {
+        intent.markDeclined(now);
+        intentRepository.save(intent);
+        String errorCode = funds.getErrorCode();
+        if ("PAYMENT_IN_PROGRESS".equals(errorCode)) {
+          throw new CustomException(ErrorCode.PAYMENT_IN_PROGRESS);
+        } else if ("FUNDS_CHANGED_BY_OTHER_PAYMENT".equals(errorCode)) {
+          throw new CustomException(ErrorCode.FUNDS_CHANGED_BY_OTHER_PAYMENT);
+        }
+        throw new CustomException(ErrorCode.FUNDS_INSUFFICIENT);
+      }
+      if (!funds.isPolicyOk()) {
+        throw new CustomException(ErrorCode.PAYMENT_POLICY_VIOLATION);
+      }
+
+      // 상태 전이
+      intent.markApproved(now);
+
+      // 응답 구성
+      List<PaymentIntentItemView> itemViews =
+          intentItems.stream().map(this::toItemView).collect(Collectors.toList());
+
+      PaymentIntentDetailResponse res = PaymentIntentDetailResponse.from(intent, itemViews);
+
+      // 결제 승인 알림
+      if (tuningProperties.getNotification().isAsync()) {
+        eventPublisher.publishEvent(new PaymentApprovedEvent(
+            intent.getIntentId(), customerId,
+            intent.getStoreId(), intent.getAmount()));
+      } else {
+        sendApprovalNotifications(intent, customerId);
+      }
+
+      try {
+        idempotencyService.completeStrict(slot, HttpStatus.OK.value(), res, intent.getPublicId());
+      } catch (JsonProcessingException e) {
+        idempotencyService.completeWithoutSnapshot(slot, HttpStatus.OK.value(), intent.getPublicId());
+      }
+
+      return IdempotentResult.ok(res);
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  트랜잭션 분리 경로 (split-transaction=true, 기본)
+  //
+  //  [TX-A]  멱등 슬롯 선점 · intent 검증 · items 스냅샷 → 커밋
+  //  [NO-TX] PIN 검증 (HTTP) · 자금 캡처 (HTTP) ← 커넥션 미점유
+  //  [TX-B]  intent 재조회 · 상태 전이 · 멱등 complete → 커밋
+  //  [AFTER] 알림 (세트 #30 이벤트)
+  // ═══════════════════════════════════════════════════════════════
+
+  IdempotentResult<PaymentIntentDetailResponse> approveSplit(
+      UUID intentPublicId, String idempotencyKeyHeader, Long customerId, ApproveRequest req) {
+
+    long t0 = System.currentTimeMillis();
+
+    // 바디 해시 (트랜잭션 불필요)
     String canonicalBody = canonicalizeApproveBody(req);
     byte[] bodyHash = IdempotencyService.sha256(canonicalBody);
 
-    UUID keyUuid;
-    try {
-      keyUuid = UUID.fromString(idempotencyKeyHeader);
-    } catch (IllegalArgumentException ex) {
-      throw new CustomException(ErrorCode.IDEMPOTENCY_KEY_INVALID);
-    }
-    String path = "/payments/" + intentPublicId + "/approve";
-    IdemBegin begin =
-        idempotencyService.beginOrLoad(
-            IdemActorType.CUSTOMER, customerId, "POST", path, keyUuid, bodyHash);
+    // ───────────────────────────────────────────────
+    // [TX-A] 멱등 슬롯 + intent 검증 + items 스냅샷
+    // ───────────────────────────────────────────────
+    ApprovePhaseAResult phaseA = approveHelper.prepareApproval(
+        intentPublicId, idempotencyKeyHeader, customerId, bodyHash);
 
-    IdempotencyKey slot = begin.getRow();
-
-    if (idempotencyService.isBodyConflict(slot, bodyHash)) {
-      throw new CustomException(ErrorCode.IDEMPOTENCY_BODY_CONFLICT);
+    if (phaseA.hasEarlyReturn()) {
+      return phaseA.getEarlyReturn();
     }
 
-    if (slot.getStatus() == IdemStatus.DONE) {
-      PaymentIntentDetailResponse replay;
-      var node = slot.getResponseJson();
+    // ───────────────────────────────────────────────
+    // [NO-TX] PIN 검증 — DB 커넥션 미점유
+    //
+    // 토큰 경로: 로컬 JWT 검증 + Redis jti 기록 (monolith 호출 0)
+    // PIN 경로:  기존 HTTP 검증 (monolith 왕복 1회)
+    // ───────────────────────────────────────────────
+    long pinT0 = System.currentTimeMillis();
+    boolean useTokenPath = tuningProperties.getPin().isTokenEnabled()
+        && req.getPinToken() != null && !req.getPinToken().isBlank();
 
-      if (node != null && !node.isNull()) {
-        replay = parseSnapshot(node);
-      } else if (slot.getIntentPublicId() != null) {
-        replay = rebuildFromResource(slot.getIntentPublicId());
-      } else {
-        throw new CustomException(ErrorCode.IDEMPOTENCY_REPLAY_UNAVAILABLE);
+    if (useTokenPath) {
+      // ── 토큰 로컬 검증 (JPA 리포지토리 호출 0건) ──
+      try {
+        pinTokenVerifier.verify(req.getPinToken(), intentPublicId);
+      } catch (CustomException e) {
+        log.warn("[APPROVE_PHASE] phase=PIN_TOKEN_FAIL intentId={} error={}",
+            phaseA.getIntentId(), e.getErrorCode());
+        approveHelper.finalizeDeclined(phaseA.getIntentId(), phaseA.getIdemSlotId());
+        throw e;
       }
-      return IdempotentResult.okReplay(replay);
+      long pinElapsed = System.currentTimeMillis() - pinT0;
+      log.info("[APPROVE_PHASE] phase=PIN_TOKEN intentId={} elapsedMs={}",
+          phaseA.getIntentId(), pinElapsed);
+    } else {
+      // ── 기존 PIN HTTP 검증 ──
+      boolean pinOk;
+      try {
+        pinOk = customerClient.verifyPin(customerId, req.getPin());
+      } catch (Exception e) {
+        // PIN 서비스 불가 — 멱등 슬롯은 IN_PROGRESS 상태로 남고
+        // cleanupStalledInProgress(5분)가 정리한다.
+        log.warn("[APPROVE_ORPHAN] intentId={} reason=PIN_SERVICE_ERROR error={}",
+            phaseA.getIntentId(), e.getMessage());
+        throw e;
+      }
+      long pinElapsed = System.currentTimeMillis() - pinT0;
+      log.info("[APPROVE_PHASE] phase=PIN intentId={} elapsedMs={} result={}",
+          phaseA.getIntentId(), pinElapsed, pinOk);
+
+      if (!pinOk) {
+        // [TX-B decline] — DECLINED 를 DB 에 영속 (커밋 보장)
+        approveHelper.finalizeDeclined(phaseA.getIntentId(), phaseA.getIdemSlotId());
+        throw new CustomException(ErrorCode.PIN_INVALID);
+      }
     }
 
-    if (!begin.isCreated() && slot.getStatus() == IdemStatus.IN_PROGRESS) {
-      return IdempotentResult.acceptedWithRetryAfterSeconds(2);
-    }
+    // ───────────────────────────────────────────────
+    // [NO-TX] 자금 캡처 (HTTP) — DB 커넥션 미점유
+    //
+    // FundsService.capture() 는 intent 엔티티를 인자로 받지만
+    // 실제로는 publicId/walletId/storeId/amount 만 읽는다.
+    // UNCERTAIN 경로에서 IntentStatusUpdater.markUncertain() 이
+    // REQUIRES_NEW 로 자체 커넥션을 열어 처리한다.
+    // ───────────────────────────────────────────────
+    long fundsT0 = System.currentTimeMillis();
 
-    // 비즈니스 검증
-    PaymentIntent intent =
-        intentRepository
-            .findByPublicId(intentPublicId)
-            .orElseThrow(() -> new CustomException(ErrorCode.PAYMENT_INTENT_NOT_FOUND));
+    // FundsService.capture 에 전달할 경량 intent 프록시 생성
+    // (detached 엔티티 대신 필요 필드만 세팅한 새 인스턴스)
+    PaymentIntent intentSnapshot = PaymentIntent.builder()
+        .intentId(phaseA.getIntentId())
+        .publicId(phaseA.getIntentPublicId())
+        .customerId(phaseA.getCustomerId())
+        .walletId(phaseA.getWalletId())
+        .storeId(phaseA.getStoreId())
+        .amount(phaseA.getAmount())
+        .status(PaymentStatus.PENDING)
+        .build();
 
-    LocalDateTime now = LocalDateTime.now(clock);
+    // items 는 FundsService.capture 가 ItemSnapshot 으로 변환하는데
+    // PaymentIntentItem 필드만 필요하므로 경량 객체 생성
+    List<PaymentIntentItem> itemSnapshots = phaseA.getItemViews().stream()
+        .map(iv -> PaymentIntentItem.builder()
+            .menuId(iv.getMenuId())
+            .menuNameSnap(iv.getName())
+            .unitPriceSnap(iv.getUnitPrice())
+            .quantity(iv.getQuantity())
+            .build())
+        .collect(Collectors.toList());
 
-    if (intent.getStatus() != PaymentStatus.PENDING) {
-      throw new CustomException(ErrorCode.PAYMENT_INTENT_STATUS_CONFLICT);
-    }
-    if (intent.getExpiresAt() != null && now.isAfter(intent.getExpiresAt())) {
-      intent.markExpired(now);
-      intentRepository.save(intent);
-      throw new CustomException(ErrorCode.PAYMENT_INTENT_EXPIRED);
-    }
-    if (!Objects.equals(intent.getCustomerId(), customerId)) {
-      throw new CustomException(ErrorCode.PAYMENT_INTENT_OWNER_MISMATCH);
-    }
-
-    // PIN 검증 (모놀리식 서버 검사)
-    boolean pinOk = customerClient.verifyPin(customerId, req.getPin());
-    if (!pinOk) {
-      intent.markDeclined(now);
-      intentRepository.save(intent);
-      throw new CustomException(ErrorCode.PIN_INVALID);
-    }
-
-    // 자금 캡처
-    List<PaymentIntentItem> intentItems =
-        itemRepository.findByIntent_IntentId(intent.getIntentId());
-    FundsService.FundsResult funds = fundsService.capture(intent, intentItems);
+    FundsService.FundsResult funds = fundsService.capture(intentSnapshot, itemSnapshots);
+    long fundsElapsed = System.currentTimeMillis() - fundsT0;
+    log.info("[APPROVE_PHASE] phase=FUNDS intentId={} elapsedMs={} uncertain={} sufficient={}",
+        phaseA.getIntentId(), fundsElapsed, funds.isUncertain(), funds.isSufficient());
 
     if (funds.isUncertain()) {
-      log.warn("자금 캡처 UNCERTAIN - 복구 스케줄러가 처리 예정: intentId={}", intent.getIntentId());
+      // IntentStatusUpdater 가 이미 UNCERTAIN 으로 마킹했다.
+      // 복구 스케줄러가 처리 예정.
+      log.warn("[APPROVE_ORPHAN] intentId={} reason=FUNDS_UNCERTAIN",
+          phaseA.getIntentId());
       throw new CustomException(ErrorCode.SERVICE_TIMEOUT);
     }
 
     if (!funds.isSufficient()) {
-      intent.markDeclined(now);
-      intentRepository.save(intent);
+      // [TX-B decline]
+      approveHelper.finalizeDeclined(phaseA.getIntentId(), phaseA.getIdemSlotId());
       String errorCode = funds.getErrorCode();
       if ("PAYMENT_IN_PROGRESS".equals(errorCode)) {
         throw new CustomException(ErrorCode.PAYMENT_IN_PROGRESS);
@@ -357,25 +593,37 @@ public class PaymentIntentService {
       throw new CustomException(ErrorCode.FUNDS_INSUFFICIENT);
     }
     if (!funds.isPolicyOk()) {
+      approveHelper.finalizeDeclined(phaseA.getIntentId(), phaseA.getIdemSlotId());
       throw new CustomException(ErrorCode.PAYMENT_POLICY_VIOLATION);
     }
 
-    // 상태 전이
-    intent.markApproved(now);
-
-    // 응답 구성
-    List<PaymentIntentItemView> itemViews =
-        intentItems.stream().map(this::toItemView).collect(Collectors.toList());
-
-    PaymentIntentDetailResponse res = PaymentIntentDetailResponse.from(intent, itemViews);
-
-    // 결제 승인 알림 - 동기 전송 (점주가 즉시 알림을 받아야 고객 퇴장 가능)
-    sendApprovalNotifications(intent, customerId);
-
+    // ───────────────────────────────────────────────
+    // [TX-B] intent 재조회 + APPROVED + 멱등 완료
+    // ───────────────────────────────────────────────
+    PaymentIntentDetailResponse res;
     try {
-      idempotencyService.completeStrict(slot, HttpStatus.OK.value(), res, intent.getPublicId());
-    } catch (JsonProcessingException e) {
-      idempotencyService.completeWithoutSnapshot(slot, HttpStatus.OK.value(), intent.getPublicId());
+      res = approveHelper.finalizeApproved(
+          phaseA.getIntentId(), phaseA.getIdemSlotId(), phaseA.getItemViews());
+    } catch (ObjectOptimisticLockingFailureException e) {
+      // @Version 충돌 — 재시도하지 않는다. 멱등 경로로 흡수.
+      log.warn("[APPROVE_ORPHAN] intentId={} reason=OPTIMISTIC_LOCK_CONFLICT",
+          phaseA.getIntentId());
+      throw new CustomException(ErrorCode.PAYMENT_INTENT_STATUS_CONFLICT);
+    }
+
+    long totalElapsed = System.currentTimeMillis() - t0;
+    log.info("[APPROVE_PHASE] phase=COMPLETE intentId={} elapsedMs={}", phaseA.getIntentId(), totalElapsed);
+
+    // ───────────────────────────────────────────────
+    // [AFTER] 알림 (세트 #30 이벤트 — TX 밖)
+    // ───────────────────────────────────────────────
+    if (tuningProperties.getNotification().isAsync()) {
+      eventPublisher.publishEvent(new PaymentApprovedEvent(
+          phaseA.getIntentId(), customerId,
+          phaseA.getStoreId(), phaseA.getAmount()));
+    } else {
+      // 동기 폴백: 경량 intent 로 알림 전송
+      sendApprovalNotifications(intentSnapshot, customerId);
     }
 
     return IdempotentResult.ok(res);
@@ -466,14 +714,22 @@ public class PaymentIntentService {
   }
 
   private String canonicalizeApproveBody(ApproveRequest req) {
-    String raw = req.getPin();
-    String normalized = (raw == null) ? null : raw.replaceAll("\\s+", "");
+    boolean hasToken = req.getPinToken() != null && !req.getPinToken().isBlank();
 
-    if (normalized == null || !normalized.matches("\\d{6}")) {
-      throw new CustomException(ErrorCode.PIN_INVALID);
+    CanonicalApprove canonical;
+    if (hasToken) {
+      // 토큰 경로: 토큰 문자열 자체를 정규화 대상으로 포함
+      canonical = CanonicalApprove.builder().pinToken(req.getPinToken()).build();
+    } else {
+      // PIN 경로: 기존 로직
+      String raw = req.getPin();
+      String normalized = (raw == null) ? null : raw.replaceAll("\\s+", "");
+
+      if (normalized == null || !normalized.matches("\\d{6}")) {
+        throw new CustomException(ErrorCode.PIN_INVALID);
+      }
+      canonical = CanonicalApprove.builder().pin(normalized).build();
     }
-
-    CanonicalApprove canonical = CanonicalApprove.builder().pin(normalized).build();
 
     try {
       return canonicalObjectMapper.writeValueAsString(canonical);

@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
+import com.ssafy.keeping.qr.acl.InternalHeaderProvider;
 import com.ssafy.keeping.qr.acl.StoreClient;
 import com.ssafy.keeping.qr.acl.dto.StoreResponse;
+import com.ssafy.keeping.qr.config.CacheModeConfig;
 import java.time.Duration;
 import java.util.Optional;
 import org.junit.jupiter.api.*;
@@ -53,9 +55,14 @@ class StoreClientContractTest {
             .readTimeout(Duration.ofSeconds(5))
             .build();
 
-    storeClient = new StoreClient(restTemplate, null, null, null);
+    InternalHeaderProvider headerProvider = new InternalHeaderProvider();
+    ReflectionTestUtils.setField(headerProvider, "internalAuthToken", "internal-service-token-12345");
+
+    CacheModeConfig cacheConfig = new CacheModeConfig();
+    ReflectionTestUtils.setField(cacheConfig, "mode", CacheModeConfig.Mode.NONE);
+
+    storeClient = new StoreClient(restTemplate, null, cacheConfig, headerProvider);
     ReflectionTestUtils.setField(storeClient, "monolithUrl", "http://localhost:18080");
-    ReflectionTestUtils.setField(storeClient, "internalAuthToken", "internal-service-token-12345");
   }
 
   /**
