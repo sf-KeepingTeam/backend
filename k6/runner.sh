@@ -58,7 +58,7 @@ RUN_MODE=${RUN_MODE:-v2}
 #  ★ qr-service 의 payment.pin.token-enabled=true 로 측정할 때는 반드시 PIN_MODE=token.
 #    안 그러면 ApproveRequest.pinToken 이 비어 토큰 경로를 타지 않는다 = 측정이 무의미해진다.
 PIN_MODE=${PIN_MODE:-pin}
-case "$PIN_MODE" in pin|token) ;; *) echo "PIN_MODE는 pin 또는 token"; exit 1 ;; esac
+case "$PIN_MODE" in pin|token|session) ;; *) echo "PIN_MODE는 pin | token | session"; exit 1 ;; esac
 
 case "$RUN_MODE" in
   v2)     QR_MODE=constant ;;
@@ -220,7 +220,7 @@ fi
 
 QSTART=$(date +%s)
 echo "▸ 결제 시작 $(date +%H:%M:%S)"
-k6 run -e QR_BASE_URL="http://$QR" -e QR_VUS="$QR_VUS" -e QR_DURATION="$DUR" -e QR_MODE="$QR_MODE" -e PIN_MODE="$PIN_MODE" -e MONO_BASE_URL="http://$MONO" \
+k6 run -e QR_BASE_URL="http://$QR" -e QR_VUS="$QR_VUS" -e QR_DURATION="$DUR" -e QR_MODE="$QR_MODE" -e PIN_MODE="$PIN_MODE" -e PIN_SESSION_MAX_USES="${PIN_SESSION_MAX_USES:-5}" -e MONO_BASE_URL="http://$MONO" \
    --summary-export="$OUT/qr.json" 02-qr-payment-flow.js > "$OUT/qr.log" 2>&1
 QEND=$(date +%s)
 echo "▸ 결제 종료 $(date +%H:%M:%S)  (결제 구간 $(( QEND - QSTART ))초)"

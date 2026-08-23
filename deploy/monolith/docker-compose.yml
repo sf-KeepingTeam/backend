@@ -55,6 +55,23 @@ services:
       #   → SERVER_TOMCAT_THREADS_MAX 가 실제로 먹었는지 검증할 방법도 사라진다.
       # 양쪽 서비스·양쪽 구성에 동일하게 적용하므로 비교에는 편향을 주지 않는다.
       - SERVER_TOMCAT_MBEANREGISTRY_ENABLED=true
+
+      # ---------------------------------------------------------------------
+      # v3 후속 — PIN 세션 토큰 (커밋 e201660)
+      #   토큰 1개로 결제 여러 건. 1차의 intent 단위 토큰은 Argon2 횟수를 못 줄여
+      #   "이동이지 개선이 아니다" 판정을 받았다 (result.md §7-4 ③).
+      #
+      #   ★ RATE_LIMIT 만 기본 true 다 — 보안 기능이지 성능 기능이 아니다.
+      #     측정 편의로 끄지 말 것. verify-token 은 PIN 만 맞으면 무제한 Argon2 를
+      #     태울 수 있는 엔드포인트다.
+      # ---------------------------------------------------------------------
+      - PAYMENT_PIN_SESSION_TOKEN_ENABLED=${PAYMENT_PIN_SESSION_TOKEN_ENABLED:-false}
+      - PAYMENT_PIN_SESSION_TOKEN_TTL_SECONDS=${PAYMENT_PIN_SESSION_TOKEN_TTL_SECONDS:-180}
+      - PAYMENT_PIN_SESSION_TOKEN_MAX_USES=${PAYMENT_PIN_SESSION_TOKEN_MAX_USES:-5}
+      - PAYMENT_PIN_SESSION_TOKEN_MAX_AMOUNT_PER_USE=${PAYMENT_PIN_SESSION_TOKEN_MAX_AMOUNT_PER_USE:-100000}
+      - PAYMENT_PIN_SESSION_TOKEN_MAX_AMOUNT_TOTAL=${PAYMENT_PIN_SESSION_TOKEN_MAX_AMOUNT_TOTAL:-300000}
+      - PAYMENT_PIN_RATE_LIMIT_ENABLED=${PAYMENT_PIN_RATE_LIMIT_ENABLED:-true}
+      - PAYMENT_PIN_RATE_LIMIT_PER_MINUTE=${PAYMENT_PIN_RATE_LIMIT_PER_MINUTE:-10}
     depends_on:
       mysql:
         condition: service_healthy

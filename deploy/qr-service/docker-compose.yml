@@ -60,6 +60,14 @@ services:
       - PAYMENT_NOTIFICATION_ASYNC=${PAYMENT_NOTIFICATION_ASYNC:-false}
       - PAYMENT_APPROVE_SPLIT_TRANSACTION=${PAYMENT_APPROVE_SPLIT_TRANSACTION:-false}
       - PAYMENT_PIN_TOKEN_ENABLED=${PAYMENT_PIN_TOKEN_ENABLED:-false}
+
+      # ── v3 후속 — 세션 토큰 폐기 확인 ────────────────────────────────────
+      #   ⚠️ monolith 와 qr 이 같은 Redis 를 볼 때만 동작한다.
+      #      2-EC2 배포에서는 keeping-redis / qr-redis 로 별개일 가능성이 높다.
+      #      환경변수 문자열 비교로 판단하지 말 것 (둘 다 'redis' 로 찍혀 오탐한다).
+      #      실제 프로브로 확인하고, 별개면 false 로 둔 채
+      #      "TTL 이 유일한 방어선"이라고 result.md 에 적는다.
+      - PAYMENT_PIN_SESSION_TOKEN_REVOCATION_CHECK=${PAYMENT_PIN_SESSION_TOKEN_REVOCATION_CHECK:-false}
     depends_on:
       mysql:
         condition: service_healthy

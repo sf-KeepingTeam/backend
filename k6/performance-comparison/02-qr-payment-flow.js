@@ -54,7 +54,13 @@ import {
 const qrCreateTime = new Trend('qr_create_time', true);   // 1단계: QR 생성
 const scanTime = new Trend('scan_time', true);             // 2단계: 점주 스캔
 const intentTime = new Trend('intent_time', true);         // 3단계: 결제 요청
-const pinTokenTime = new Trend('pin_token_time', true);     // 3.5단계: PIN 토큰 발급 (PIN_MODE=token)
+const pinTokenTime = new Trend('pin_token_time', true);     // 3.5단계: PIN 토큰 발급
+
+// ★ 세션 토큰 판정 지표 — 발급 횟수 ÷ 결제 건수 가 요청 A 의 핵심 근거다
+const pinTokenIssues = new Counter('pin_token_issues');     // verify-token 호출 수
+const pinRateLimited = new Counter('pin_rate_limited_429'); // ⚠️ 결제 실패로 세지 말 것
+const pinTokenRejected = new Counter('pin_token_rejected'); // 401/403/409 (소진·만료·폐기)
+const pinTokenRetries = new Counter('pin_token_retries');   // 재발급 후 재시도 성공
 const approveTime = new Trend('approve_time', true);       // 4단계: 결제 승인
 const totalFlowTime = new Trend('total_flow_time', true);  // 전체 플로우 소요시간
 
@@ -100,6 +106,25 @@ const QR_MODE = __ENV.QR_MODE || 'ramp';
 //      판정은 total_flow_time 과 처리량(초당 건수)으로 한다.
 const PIN_MODE = __ENV.PIN_MODE || 'pin';
 
+// ── PIN_MODE=session (v3 후속) ──────────────────────────────────────────────
+//  'token'   은 결제 1건마다 verify-token 을 부른다 → Argon2 횟수가 그대로다.
+//            1차 측정에서 "개선이 아니라 이동" 판정을 받은 이유 (result.md §7-4 ③).
+//  'session' 은 VU 당 토큰 1개를 들고 다니며 여러 결제에 재사용한다.
+//            이때 비로소 Argon2 호출 횟수가 실제로 줄어든다.
+//
+//  ★ 발급 요청에 intentPublicId 를 넣지 않는다. 넣으면 intent 토큰이 나와서
+//    세션 토큰을 만들어놓고 F4 를 다시 재는 꼴이 된다.
+//
+//  재발급 조건: 사용 횟수 소진 / TTL 임박 / approve 가 토큰 사유로 거절
+const PIN_SESSION_MAX_USES = parseInt(__ENV.PIN_SESSION_MAX_USES || '5');
+// 서버 TTL 180초 − 여유 30초
+const PIN_SESSION_MAX_AGE_MS = parseInt(__ENV.PIN_SESSION_MAX_AGE_MS || '150000');
+
+// ── VU-local 세션 상태 (k6 는 VU 마다 별도 JS 컨텍스트라 이터레이션 간 유지된다) ──
+let sessionToken = null;
+let sessionUses = 0;
+let sessionIssuedAt = 0;
+
 // 램프업 시간을 전체의 1/3로 설정
 const rampDuration = Math.max(30, Math.floor(parseDuration(QR_DURATION) / 3));
 
@@ -131,6 +156,41 @@ export const options = {
         'http_req_failed': ['rate<0.05'],     // 전체 에러율: 5% 이내
     },
 };
+
+// ============================================================
+//  세션 토큰 헬퍼 (PIN_MODE=session)
+// ============================================================
+function issueSessionToken(headers) {
+    const st = Date.now();
+    const res = http.post(
+        `${MONO_BASE_URL}/customers/pin/verify-token`,
+        JSON.stringify({ pin: TEST_DATA.PIN }),   // ★ intentPublicId 없음 = 세션 토큰
+        { headers }
+    );
+    pinTokenTime.add(Date.now() - st);
+    pinTokenIssues.add(1);
+
+    // 429 는 rate limit(10/분)이지 결제 실패가 아니다. 반드시 분리해서 센다.
+    if (res.status === 429) { pinRateLimited.add(1); return null; }
+    if (res.status !== 200) {
+        console.error(`[세션토큰 발급 실패] ${res.status} - ${res.body}`);
+        return null;
+    }
+    try {
+        const t = res.json('data').pinToken;
+        if (!t) return null;
+        sessionToken = t; sessionUses = 0; sessionIssuedAt = Date.now();
+        return t;
+    } catch (e) { return null; }
+}
+
+function getSessionToken(headers) {
+    const aged = sessionIssuedAt > 0 && (Date.now() - sessionIssuedAt) > PIN_SESSION_MAX_AGE_MS;
+    if (!sessionToken || sessionUses >= PIN_SESSION_MAX_USES || aged) {
+        return issueSessionToken(headers);
+    }
+    return sessionToken;
+}
 
 // ============================================================
 //  메인 함수 — 각 VU가 반복 실행합니다
@@ -291,7 +351,14 @@ export default function () {
         //  ★ intentPublicId = 경로의 intentId (둘 다 같은 UUID)
         // ──────────────────────────────────────────
         let pinToken = null;
-        if (PIN_MODE === 'token') {
+        if (PIN_MODE === 'session') {
+            pinToken = getSessionToken(customerHeaders);
+            if (!pinToken) {
+                paymentFailures.add(1);
+                paymentSuccess.add(false);
+                return;   // 발급 실패(429 포함) — 위에서 이미 카운트됨
+            }
+        } else if (PIN_MODE === 'token') {
             const pinTokenStart = Date.now();
             const pinTokenRes = http.post(
                 `${MONO_BASE_URL}/customers/pin/verify-token`,
@@ -327,17 +394,40 @@ export default function () {
         });
 
         // PIN_MODE 에 따라 평문 PIN 또는 토큰을 보낸다
-        const approveBody = PIN_MODE === 'token'
+        const usingToken = (PIN_MODE === 'token' || PIN_MODE === 'session');
+        const approveBody = usingToken
             ? { pinToken: pinToken }
             : { pin: TEST_DATA.PIN };
 
         const approveStart = Date.now();
-        const approveRes = http.post(
+        let approveRes = http.post(
             `${QR_BASE_URL}/payments/${intentId}/approve`,
             JSON.stringify(approveBody),
             { headers: approveHeaders }
         );
+
+        // ── 세션 토큰이 소진·만료·폐기로 거절되면 재발급 후 1회 재시도 ──────────
+        //    이건 '실패'가 아니라 정상 운영 경로다. 진짜 실패와 구분해서 센다.
+        if (PIN_MODE === 'session'
+            && (approveRes.status === 401 || approveRes.status === 403 || approveRes.status === 409)) {
+            pinTokenRejected.add(1);
+            sessionToken = null; sessionUses = 0; sessionIssuedAt = 0;
+            const fresh = getSessionToken(customerHeaders);
+            if (fresh) {
+                approveRes = http.post(
+                    `${QR_BASE_URL}/payments/${intentId}/approve`,
+                    JSON.stringify({ pinToken: fresh }),
+                    { headers: approveHeaders }
+                );
+                pinTokenRetries.add(1);
+            }
+        }
+        // approve_time 은 재시도를 포함한 벽시계 시간이다 (소비자가 실제로 기다린 시간)
         approveTime.add(Date.now() - approveStart);
+
+        if (PIN_MODE === 'session' && approveRes.status >= 200 && approveRes.status < 300) {
+            sessionUses += 1;
+        }
 
         const approveOk = check(approveRes, {
             'Approve: status 200': (r) => r.status === 200,
@@ -371,6 +461,11 @@ export function handleSummary(data) {
     const approveP99 = data.metrics.approve_time?.values['p(99)'] || 0;
     const totalP95 = data.metrics.total_flow_time?.values['p(95)'] || 0;
     const pinTokenP95 = data.metrics.pin_token_time?.values['p(95)'] || 0;
+    const tokenIssues = data.metrics.pin_token_issues?.values['count'] || 0;
+    const rateLimited = data.metrics.pin_rate_limited_429?.values['count'] || 0;
+    const tokenRejected = data.metrics.pin_token_rejected?.values['count'] || 0;
+    const tokenRetries = data.metrics.pin_token_retries?.values['count'] || 0;
+    const iterations = data.metrics.iterations?.values['count'] || 0;
     const successRate = data.metrics.payment_success_rate?.values['rate'] || 0;
     const failures = data.metrics.payment_failures?.values['count'] || 0;
 
@@ -387,7 +482,16 @@ export function handleSummary(data) {
     console.log(`║  3단계 Approve  (소비자)   p95: ${pad(approveP95)}ms  p99: ${pad(approveP99)}ms  ║`);
     console.log('║                                                              ║');
     console.log(`║  전체 플로우               p95: ${pad(totalP95)}ms              ║`);
-    console.log(`║  PIN 모드: ${PIN_MODE.padEnd(6)}                                        ║`);
+    console.log(`║  PIN 모드: ${PIN_MODE.padEnd(8)}                                      ║`);
+    if (PIN_MODE === 'session') {
+        const ratio = iterations > 0 ? (tokenIssues / iterations) : 0;
+        console.log('║                                                              ║');
+        console.log(`║  ★ verify-token 호출: ${String(tokenIssues).padStart(6)} / 결제 ${String(iterations).padStart(6)} 건        ║`);
+        console.log(`║  ★ 호출/결제 비율:    ${ratio.toFixed(3).padStart(6)}   (기대 ≈ ${(1/PIN_SESSION_MAX_USES).toFixed(3)})       ║`);
+        console.log(`║    429 rate limit:    ${String(rateLimited).padStart(6)} 건  ← 결제실패 아님    ║`);
+        console.log(`║    토큰 거절(401/403/409): ${String(tokenRejected).padStart(5)} 건               ║`);
+        console.log(`║    재발급 후 재시도:  ${String(tokenRetries).padStart(6)} 건               ║`);
+    }
     console.log(`║  성공률:                   ${(successRate * 100).toFixed(1)}%                        ║`);
     console.log(`║  실패 수:                  ${failures}건                           ║`);
     console.log('║                                                              ║');
