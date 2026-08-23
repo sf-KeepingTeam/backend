@@ -41,6 +41,7 @@ import http from 'k6/http';
 import { check, sleep, group } from 'k6';
 import { Trend, Counter, Rate } from 'k6/metrics';
 import {
+    MONO_BASE_URL,
     QR_BASE_URL,
     TEST_DATA,
     getTestHeaders,
@@ -53,6 +54,7 @@ import {
 const qrCreateTime = new Trend('qr_create_time', true);   // 1단계: QR 생성
 const scanTime = new Trend('scan_time', true);             // 2단계: 점주 스캔
 const intentTime = new Trend('intent_time', true);         // 3단계: 결제 요청
+const pinTokenTime = new Trend('pin_token_time', true);     // 3.5단계: PIN 토큰 발급 (PIN_MODE=token)
 const approveTime = new Trend('approve_time', true);       // 4단계: 결제 승인
 const totalFlowTime = new Trend('total_flow_time', true);  // 전체 플로우 소요시간
 
@@ -80,6 +82,23 @@ const QR_DURATION = __ENV.QR_DURATION || '3m';
 //  또 배경부하(constant, DUR)와 길이가 달라 러닝 후반에 배경부하가 먼저
 //  끝나버린다. 두 부하의 창을 맞추려면 결제도 constant 여야 한다.
 const QR_MODE = __ENV.QR_MODE || 'ramp';
+
+// ── PIN_MODE ────────────────────────────────────────────────────────────────
+//  'pin'   (기본, 기존 동작) approve 에 평문 PIN 을 실어 보낸다.
+//                            qr-service 가 monolith 로 pin-verify 를 동기 호출한다.
+//  'token' (v3 개선)         approve 전에 monolith 에서 PIN 토큰을 발급받아 첨부한다.
+//                            qr-service 는 서명을 로컬 검증하므로 monolith 왕복이 없다.
+//
+//  ★ v3 에서 qr-service 의 ApproveRequest 에 pinToken 필드가 추가됐다.
+//    PIN_MODE=pin 으로 두면 payment.pin.token-enabled=true 여도 토큰 경로를 타지 않는다.
+//    → PAYMENT_PIN_TOKEN_ENABLED=true 로 측정할 때는 반드시 PIN_MODE=token 으로 실행할 것.
+//
+//  ⚠️ 이 모드는 「개선」이 아니라 「이동」일 수 있다.
+//    토큰이 intent 단위로 발급되므로 결제 1건당 Argon2 계산 횟수는 줄지 않는다.
+//    approve() 안에서 하던 것을 클라이언트가 미리 하는 것으로 위치만 바뀐다.
+//    → approve_time 은 크게 줄지만 total_flow_time 은 덜 줄어든다.
+//      판정은 total_flow_time 과 처리량(초당 건수)으로 한다.
+const PIN_MODE = __ENV.PIN_MODE || 'pin';
 
 // 램프업 시간을 전체의 1/3로 설정
 const rampDuration = Math.max(30, Math.floor(parseDuration(QR_DURATION) / 3));
@@ -261,16 +280,61 @@ export default function () {
         //  ★ 이 단계는 캐싱 모드와 관계없이 모놀리스 호출 필수 ★
         //  따라서 PUSH 모드에서도 완전히 빨라지지는 않습니다.
         // ──────────────────────────────────────────
+        // ══════════════════════════════════════════
+        //  3.5단계: PIN 토큰 발급 (PIN_MODE=token 일 때만) — 소비자 역할
+        // ══════════════════════════════════════════
+        //  소비자가 PIN 을 입력하면 monolith 가 Argon2 로 검증하고
+        //  intent 에 바인딩된 단기 서명 토큰(JWT)을 준다.
+        //  이후 approve 는 이 토큰만 보내고, qr-service 는 로컬에서 서명만 검증한다.
+        //
+        //  ★ 대상이 monolith(8080)다. QR_BASE_URL 이 아니라 MONO_BASE_URL.
+        //  ★ intentPublicId = 경로의 intentId (둘 다 같은 UUID)
+        // ──────────────────────────────────────────
+        let pinToken = null;
+        if (PIN_MODE === 'token') {
+            const pinTokenStart = Date.now();
+            const pinTokenRes = http.post(
+                `${MONO_BASE_URL}/customers/pin/verify-token`,
+                JSON.stringify({
+                    pin: TEST_DATA.PIN,
+                    intentPublicId: intentId,
+                }),
+                { headers: customerHeaders }
+            );
+            pinTokenTime.add(Date.now() - pinTokenStart);
+
+            const pinTokenOk = check(pinTokenRes, {
+                'PinToken: status 200': (r) => r.status === 200,
+                'PinToken: pinToken 존재': (r) => {
+                    try { return r.json().data && r.json().data.pinToken; }
+                    catch (e) { return false; }
+                },
+            });
+
+            if (!pinTokenOk) {
+                paymentFailures.add(1);
+                paymentSuccess.add(false);
+                console.error(`[3.5단계 실패] PinToken: ${pinTokenRes.status} - ${pinTokenRes.body}`);
+                return;
+            }
+
+            pinToken = pinTokenRes.json('data').pinToken;
+        }
+
+        // ══════════════════════════════════════════
         const approveHeaders = Object.assign({}, customerHeaders, {
             'Idempotency-Key': generateUUID(),
         });
 
+        // PIN_MODE 에 따라 평문 PIN 또는 토큰을 보낸다
+        const approveBody = PIN_MODE === 'token'
+            ? { pinToken: pinToken }
+            : { pin: TEST_DATA.PIN };
+
         const approveStart = Date.now();
         const approveRes = http.post(
             `${QR_BASE_URL}/payments/${intentId}/approve`,
-            JSON.stringify({
-                pin: TEST_DATA.PIN,
-            }),
+            JSON.stringify(approveBody),
             { headers: approveHeaders }
         );
         approveTime.add(Date.now() - approveStart);
@@ -306,6 +370,7 @@ export function handleSummary(data) {
     const approveP95 = data.metrics.approve_time?.values['p(95)'] || 0;
     const approveP99 = data.metrics.approve_time?.values['p(99)'] || 0;
     const totalP95 = data.metrics.total_flow_time?.values['p(95)'] || 0;
+    const pinTokenP95 = data.metrics.pin_token_time?.values['p(95)'] || 0;
     const successRate = data.metrics.payment_success_rate?.values['rate'] || 0;
     const failures = data.metrics.payment_failures?.values['count'] || 0;
 
@@ -316,9 +381,13 @@ export function handleSummary(data) {
     console.log('║                                                              ║');
     console.log(`║  1단계 QR 생성  (소비자)   p95: ${pad(qrP95)}ms  p99: ${pad(qrP99)}ms  ║`);
     console.log(`║  2단계 Intent   (점주)     p95: ${pad(intentP95)}ms  p99: ${pad(intentP99)}ms  ║`);
+    if (PIN_MODE === 'token') {
+        console.log(`║  3.5단계 PIN토큰(소비자)   p95: ${pad(pinTokenP95)}ms                   ║`);
+    }
     console.log(`║  3단계 Approve  (소비자)   p95: ${pad(approveP95)}ms  p99: ${pad(approveP99)}ms  ║`);
     console.log('║                                                              ║');
     console.log(`║  전체 플로우               p95: ${pad(totalP95)}ms              ║`);
+    console.log(`║  PIN 모드: ${PIN_MODE.padEnd(6)}                                        ║`);
     console.log(`║  성공률:                   ${(successRate * 100).toFixed(1)}%                        ║`);
     console.log(`║  실패 수:                  ${failures}건                           ║`);
     console.log('║                                                              ║');

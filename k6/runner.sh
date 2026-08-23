@@ -50,6 +50,16 @@ NOTE=${6:-}
 #    결함 1·2·3 은 두 구성에 동일하게 적용되므로 **비교는 유효**하고,
 #    절대값은 §3-9 에 적힌 대로 계속 유보한다.
 RUN_MODE=${RUN_MODE:-v2}
+
+# ── PIN_MODE ────────────────────────────────────────────────────────────────
+#  pin   (기본) approve 에 평문 PIN 을 실어 보낸다 (v2 동작)
+#  token        approve 전에 monolith 에서 PIN 토큰을 발급받아 첨부한다 (v3 개선 경로)
+#
+#  ★ qr-service 의 payment.pin.token-enabled=true 로 측정할 때는 반드시 PIN_MODE=token.
+#    안 그러면 ApproveRequest.pinToken 이 비어 토큰 경로를 타지 않는다 = 측정이 무의미해진다.
+PIN_MODE=${PIN_MODE:-pin}
+case "$PIN_MODE" in pin|token) ;; *) echo "PIN_MODE는 pin 또는 token"; exit 1 ;; esac
+
 case "$RUN_MODE" in
   v2)     QR_MODE=constant ;;
   legacy) QR_MODE=ramp     ;;
@@ -127,7 +137,7 @@ require_alive() {  # require_alive <시점라벨>
 
 echo "════════════════════════════════════════════════════════"
 echo " 러닝 $LABEL  |  $SETUP  |  배경 ${BG_VUS}VU  결제 ${QR_VUS}VU  ${DUR}"
-echo " 모드: $RUN_MODE  (결제 executor = $QR_MODE)"
+echo " 모드: $RUN_MODE  (결제 executor = $QR_MODE)  ·  PIN: $PIN_MODE"
 [ -n "$NOTE" ] && echo " 메모: $NOTE"
 echo "════════════════════════════════════════════════════════"
 
@@ -144,6 +154,7 @@ echo "════════════════════════�
   echo
   echo "── 투입 부하 (설정값) ──"
   echo "러너 모드  : $RUN_MODE"
+  echo "PIN 모드   : $PIN_MODE  $([ "$PIN_MODE" = token ] && echo '(monolith 에서 토큰 발급 후 approve 에 첨부)' || echo '(approve 에 평문 PIN)')"
   echo "배경 VU    : $BG_VUS  (constant-vus, ${BG_DUR_S}초)"
   if [ "$QR_MODE" = "constant" ]; then
     echo "결제 VU    : $QR_VUS  (constant-vus, ${DUR_S}초 고정)"
@@ -198,7 +209,7 @@ fi
 
 QSTART=$(date +%s)
 echo "▸ 결제 시작 $(date +%H:%M:%S)"
-k6 run -e QR_BASE_URL="http://$QR" -e QR_VUS="$QR_VUS" -e QR_DURATION="$DUR" -e QR_MODE="$QR_MODE" \
+k6 run -e QR_BASE_URL="http://$QR" -e QR_VUS="$QR_VUS" -e QR_DURATION="$DUR" -e QR_MODE="$QR_MODE" -e PIN_MODE="$PIN_MODE" -e MONO_BASE_URL="http://$MONO" \
    --summary-export="$OUT/qr.json" 02-qr-payment-flow.js > "$OUT/qr.log" 2>&1
 QEND=$(date +%s)
 echo "▸ 결제 종료 $(date +%H:%M:%S)  (결제 구간 $(( QEND - QSTART ))초)"

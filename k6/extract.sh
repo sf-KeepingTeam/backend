@@ -39,7 +39,7 @@ for lab in labels:
     meta = os.path.join(d, 'meta.txt')
     if os.path.exists(meta):
         for line in open(meta):
-            if line.startswith(('라벨','구성','main','payment','배경VU','결제VU','지속','시작','종료','창')):
+            if line.startswith(('라벨','구성','러너 모드','PIN 모드','main','payment','배경 VU','결제 VU','지속','결제 시작','결제 종료','창','메모')):
                 print("  " + line.rstrip())
     for tag, fn in (("배경부하 (main 대상)", "bg.json"), ("결제 플로우 (payment 대상)", "qr.json")):
         m = metrics(os.path.join(d, fn))
@@ -61,7 +61,7 @@ for lab in labels:
         ]
         for k, v, n in rows:
             print(f"      {k:<16} {fmt(v,n):>14}")
-        for extra in ('qr_create_time','intent_time','approve_time','total_flow_time',
+        for extra in ('qr_create_time','intent_time','pin_token_time','approve_time','total_flow_time',
                       'bg_wallet_duration','bg_store_duration','bg_menu_duration'):
             if extra in m:
                 print(f"      {extra:<16} avg {fmt(g(m,extra,'avg')):>9}  "
