@@ -45,6 +45,21 @@ services:
       #   → SERVER_TOMCAT_THREADS_MAX 가 실제로 먹었는지 검증할 방법도 사라진다.
       # 양쪽 서비스·양쪽 구성에 동일하게 적용하므로 비교에는 편향을 주지 않는다.
       - SERVER_TOMCAT_MBEANREGISTRY_ENABLED=true
+
+      # ---------------------------------------------------------------------
+      # v3 개선 플래그 (측정용 — 한 번에 하나만 켤 것)
+      #   기본값을 false 로 둔 이유: 아무것도 안 건드리면 v2 동작(=비교 기준선)이 된다.
+      #   운영 기본값은 application.yml 에서 true 다. 여기서는 측정 통제를 위해 명시 오버라이드.
+      #
+      #   PAYMENT_NOTIFICATION_ASYNC          알림을 커밋 후 비동기 발송
+      #   PAYMENT_APPROVE_SPLIT_TRANSACTION   approve 를 TX-A / NO-TX / TX-B 로 분리
+      #   PAYMENT_PIN_TOKEN_ENABLED           PIN 토큰 로컬 검증 (monolith 왕복 제거)
+      #     ⚠️ 이걸 true 로 재려면 k6 도 PIN_MODE=token 이어야 한다.
+      #        안 그러면 ApproveRequest.pinToken 이 비어 토큰 경로를 안 탄다.
+      # ---------------------------------------------------------------------
+      - PAYMENT_NOTIFICATION_ASYNC=${PAYMENT_NOTIFICATION_ASYNC:-false}
+      - PAYMENT_APPROVE_SPLIT_TRANSACTION=${PAYMENT_APPROVE_SPLIT_TRANSACTION:-false}
+      - PAYMENT_PIN_TOKEN_ENABLED=${PAYMENT_PIN_TOKEN_ENABLED:-false}
     depends_on:
       mysql:
         condition: service_healthy
