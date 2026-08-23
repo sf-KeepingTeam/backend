@@ -13,6 +13,10 @@ import com.ssafy.keeping.qr.acl.StoreClient;
 import com.ssafy.keeping.qr.common.exception.CustomException;
 import com.ssafy.keeping.qr.common.exception.ErrorCode;
 import com.ssafy.keeping.qr.config.PaymentTuningProperties;
+import com.ssafy.keeping.qr.domain.idempotency.constant.IdemActorType;
+import com.ssafy.keeping.qr.domain.idempotency.constant.IdemStatus;
+import com.ssafy.keeping.qr.domain.idempotency.dto.IdemBegin;
+import com.ssafy.keeping.qr.domain.idempotency.model.IdempotencyKey;
 import com.ssafy.keeping.qr.domain.idempotency.model.IdempotentResult;
 import com.ssafy.keeping.qr.domain.intent.constant.PaymentStatus;
 import com.ssafy.keeping.qr.domain.intent.dto.ApprovePhaseAResult;
@@ -29,6 +33,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -330,6 +335,96 @@ class ApproveSplitTransactionTest {
         then(approveHelper).should(never()).prepareApproval(any(), anyString(), anyLong(), any());
         then(approveHelper).should(never()).finalizeApproved(anyLong(), anyLong(), anyList());
         then(approveHelper).should(never()).finalizeDeclined(anyLong(), anyLong());
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  T-10: 만료 intent (split) → EXPIRED 가 DB에 남는다
+    //        (markExpired 롤백 버그 회귀 방어)
+    // ═══════════════════════════════════════════════════
+
+    @Test
+    @DisplayName("T-10: 만료 intent(split) - EXPIRED 가 DB에 남는다 (롤백 버그 회귀 방어)")
+    void approve_expired_split_expiredPersisted() {
+        // TX-A 는 만료를 감지만 하고 커밋한다 (전이·예외는 TX-A 밖)
+        ApprovePhaseAResult expiredPhaseA = ApprovePhaseAResult.builder()
+                .expired(true)
+                .intentId(INTENT_ID)
+                .intentPublicId(INTENT_PUBLIC_ID)
+                .customerId(CUSTOMER_ID)
+                .expiresAt(LocalDateTime.now(fixedClock).minusMinutes(1))
+                .idemSlotId(IDEM_SLOT_ID)
+                .build();
+        given(approveHelper.prepareApproval(eq(INTENT_PUBLIC_ID), eq(IDEM_KEY), eq(CUSTOMER_ID), any()))
+                .willReturn(expiredPhaseA);
+
+        assertThatThrownBy(() -> service.approve(INTENT_PUBLIC_ID, IDEM_KEY, CUSTOMER_ID, pinRequest()))
+                .isInstanceOf(CustomException.class)
+                .extracting(e -> ((CustomException) e).getErrorCode())
+                .isEqualTo(ErrorCode.PAYMENT_INTENT_EXPIRED);
+
+        // 핵심: finalizeExpired 는 REQUIRES_NEW 이므로 이후 예외와 무관하게 EXPIRED 가 커밋된다.
+        then(approveHelper).should().finalizeExpired(INTENT_ID, IDEM_SLOT_ID);
+
+        // 만료 확정 후에는 PIN·자금·TX-B 로 진행하지 않는다
+        then(customerClient).should(never()).verifyPin(anyLong(), anyString());
+        then(fundsService).should(never()).capture(any(), anyList());
+        then(approveHelper).should(never()).finalizeApproved(anyLong(), anyLong(), anyList());
+        then(approveHelper).should(never()).finalizeDeclined(anyLong(), anyLong());
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  T-11: 만료 intent (레거시) → EXPIRED 가 DB에 남는다
+    // ═══════════════════════════════════════════════════
+
+    @SuppressWarnings("unchecked")
+    @Test
+    @DisplayName("T-11: 만료 intent(legacy) - finalizeExpired 로 EXPIRED 를 별도 커밋")
+    void approve_expired_legacy_expiredPersisted() {
+        tuningProperties.getApprove().setSplitTransaction(false);
+
+        given(transactionTemplate.execute(any(TransactionCallback.class)))
+                .willAnswer((InvocationOnMock inv) -> {
+                    TransactionCallback<Object> callback = inv.getArgument(0);
+                    return callback.doInTransaction(null);
+                });
+
+        IdempotencyKey slot = IdempotencyKey.builder()
+                .id(IDEM_SLOT_ID)
+                .keyUuid(UUID.fromString(IDEM_KEY))
+                .actorType(IdemActorType.CUSTOMER)
+                .actorId(CUSTOMER_ID)
+                .method("POST")
+                .path("/payments/" + INTENT_PUBLIC_ID + "/approve")
+                .status(IdemStatus.IN_PROGRESS)
+                .build();
+        given(idempotencyService.beginOrLoad(
+                any(IdemActorType.class), anyLong(), anyString(), anyString(),
+                any(UUID.class), any(byte[].class)))
+                .willReturn(new IdemBegin(slot, true));
+
+        PaymentIntent expiredIntent = PaymentIntent.builder()
+                .intentId(INTENT_ID)
+                .publicId(INTENT_PUBLIC_ID)
+                .customerId(CUSTOMER_ID)
+                .walletId(200L)
+                .storeId(300L)
+                .amount(10000L)
+                .status(PaymentStatus.PENDING)
+                .expiresAt(LocalDateTime.now(fixedClock).minusMinutes(1))
+                .build();
+        given(intentRepository.findByPublicId(INTENT_PUBLIC_ID))
+                .willReturn(Optional.of(expiredIntent));
+
+        assertThatThrownBy(() -> service.approve(INTENT_PUBLIC_ID, IDEM_KEY, CUSTOMER_ID, pinRequest()))
+                .isInstanceOf(CustomException.class)
+                .extracting(e -> ((CustomException) e).getErrorCode())
+                .isEqualTo(ErrorCode.PAYMENT_INTENT_EXPIRED);
+
+        // 레거시 경로도 REQUIRES_NEW 로 EXPIRED 를 커밋한다.
+        // (기존: 같은 트랜잭션에서 markExpired + save 후 예외 → 전이까지 롤백)
+        then(approveHelper).should().finalizeExpired(INTENT_ID, IDEM_SLOT_ID);
+        then(intentRepository).should(never()).save(any(PaymentIntent.class));
+        then(customerClient).should(never()).verifyPin(anyLong(), anyString());
     }
 
     // ═══════════════════════════════════════════════════
