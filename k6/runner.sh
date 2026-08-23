@@ -118,8 +118,19 @@ print(' '.join(sorted(x['metric'].get('service','?') for x in r if x['value'][1]
 "
 }
 
-require_alive() {  # require_alive <시점라벨>
-  local got; got=$(alive "$SETUP")
+require_alive() {  # require_alive <시점라벨> [대기초]
+  # ★ 결함 9 (2026-08-23): 재기동 직후 사전확인이 실패했다.
+  #    컨테이너는 살아 있었지만 Spring 부팅(~30초) + Prometheus 스크랩이 안 끝난 상태였다.
+  #    고정 sleep 으로는 못 맞춘다 → 살아날 때까지 기다린다.
+  local wait_s=${2:-0} waited=0 got
+  while :; do
+    got=$(alive "$SETUP")
+    case " $got " in *" monolith "*) case " $got " in *" qr-service "*) break ;; esac ;; esac
+    [ "$waited" -ge "$wait_s" ] && break
+    [ "$waited" -eq 0 ] && echo "  … [$1] 대상 기동 대기 중 (최대 ${wait_s}초)"
+    sleep 5; waited=$(( waited + 5 ))
+  done
+  [ "$waited" -gt 0 ] && echo "  … ${waited}초 대기함"
   for svc in monolith qr-service; do
     case " $got " in *" $svc "*) ;; *)
       echo
@@ -192,7 +203,7 @@ for m in hikaricp_connections_max tomcat_threads_config_max_threads; do
 done
 
 # ── 1-1. 사전 생존 확인 (결함 8) ───────────────────────────────────────────
-require_alive "사전" || { echo "→ 러닝 $LABEL 중단. 대상을 살린 뒤 다시 실행하라."; exit 2; }
+require_alive "사전" 120 || { echo "→ 러닝 $LABEL 중단. 대상을 살린 뒤 다시 실행하라."; exit 2; }
 
 # ── 2. 부하 실행 ───────────────────────────────────────────────────────────
 cd "$K6DIR"
