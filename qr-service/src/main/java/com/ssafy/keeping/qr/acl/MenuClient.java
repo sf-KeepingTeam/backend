@@ -130,11 +130,12 @@ public class MenuClient {
   @CircuitBreaker(name = "menuClient", fallbackMethod = "fetchSingleFromMonolithFallback")
   @Retry(name = "menuClient", fallbackMethod = "fetchSingleFromMonolithFallback")
   public Optional<MenuResponse> fetchSingleFromMonolithDirect(Long menuId) {
-    String url = monolithUrl + "/internal/menus/" + menuId;
+    String url = monolithUrl + "/internal/menus/{menuId}";
     HttpHeaders headers = internalHeaderProvider.createHeaders();
 
     ResponseEntity<MenuResponse> response =
-        restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), MenuResponse.class);
+        restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), MenuResponse.class,
+            menuId);
 
     return Optional.ofNullable(response.getBody());
   }
@@ -173,12 +174,13 @@ public class MenuClient {
   @Retry(name = "menuClient", fallbackMethod = "fetchSingleFromMonolithFallback")
   public Optional<MenuResponse> fetchSingleFromMonolithAndCache(Long menuId) {
     log.debug("Menu 단일 조회 - 모놀리스 호출: menuId={}", menuId);
-    String url = monolithUrl + "/internal/menus/" + menuId;
+    String url = monolithUrl + "/internal/menus/{menuId}";
 
     HttpHeaders headers = internalHeaderProvider.createHeaders();
 
     ResponseEntity<MenuResponse> response =
-        restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), MenuResponse.class);
+        restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), MenuResponse.class,
+            menuId);
 
     MenuResponse menu = response.getBody();
     if (menu != null) {

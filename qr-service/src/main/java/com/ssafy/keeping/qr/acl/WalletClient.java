@@ -56,13 +56,14 @@ public class WalletClient {
   @CircuitBreaker(name = "walletClient", fallbackMethod = "getBalanceFallback")
   @Retry(name = "walletClientReadOnly", fallbackMethod = "getBalanceFallback")
   public BigDecimal getBalance(Long walletId, Long storeId) {
-    String url = monolithUrl + "/internal/wallets/" + walletId + "/stores/" + storeId + "/balance";
+    String url = monolithUrl + "/internal/wallets/{walletId}/stores/{storeId}/balance";
 
     HttpHeaders headers = internalHeaderProvider.createHeaders();
 
     ResponseEntity<WalletBalanceResponse> response =
         restTemplate.exchange(
-            url, HttpMethod.GET, new HttpEntity<>(headers), WalletBalanceResponse.class);
+            url, HttpMethod.GET, new HttpEntity<>(headers), WalletBalanceResponse.class,
+            walletId, storeId);
 
     if (response.getBody() != null) {
       return response.getBody().getBalance();
@@ -86,13 +87,7 @@ public class WalletClient {
   @CircuitBreaker(name = "walletClient", fallbackMethod = "captureFallback")
   @Retry(name = "walletClient", fallbackMethod = "captureFallback")
   public FundsResponse capture(FundsCaptureRequest request, String idempotencyKey) {
-    String url =
-        monolithUrl
-            + "/internal/wallets/"
-            + request.getWalletId()
-            + "/stores/"
-            + request.getStoreId()
-            + "/capture";
+    String url = monolithUrl + "/internal/wallets/{walletId}/stores/{storeId}/capture";
 
     HttpHeaders headers = internalHeaderProvider.createHeaders();
     headers.set("Content-Type", "application/json");
@@ -100,7 +95,8 @@ public class WalletClient {
 
     ResponseEntity<FundsResponse> response =
         writeRestTemplate.exchange(
-            url, HttpMethod.POST, new HttpEntity<>(request, headers), FundsResponse.class);
+            url, HttpMethod.POST, new HttpEntity<>(request, headers), FundsResponse.class,
+            request.getWalletId(), request.getStoreId());
 
     log.info(
         "자금 캡처 완료: walletId={}, storeId={}, amount={}, idempotencyKey={}",
@@ -128,13 +124,14 @@ public class WalletClient {
   @CircuitBreaker(name = "walletClient", fallbackMethod = "checkPaymentFallback")
   @Retry(name = "walletClientReadOnly", fallbackMethod = "checkPaymentFallback")
   public PaymentCheckResponse checkPayment(String idempotencyKey) {
-    String url = monolithUrl + "/internal/payments/check?idempotencyKey=" + idempotencyKey;
+    String url = monolithUrl + "/internal/payments/check?idempotencyKey={idempotencyKey}";
 
     HttpHeaders headers = internalHeaderProvider.createHeaders();
 
     ResponseEntity<PaymentCheckResponse> response =
         restTemplate.exchange(
-            url, HttpMethod.GET, new HttpEntity<>(headers), PaymentCheckResponse.class);
+            url, HttpMethod.GET, new HttpEntity<>(headers), PaymentCheckResponse.class,
+            idempotencyKey);
 
     return response.getBody();
   }
@@ -148,7 +145,7 @@ public class WalletClient {
   @CircuitBreaker(name = "walletClient", fallbackMethod = "refundFallback")
   @Retry(name = "walletClient", fallbackMethod = "refundFallback")
   public RefundResponse refund(RefundRequest request, String idempotencyKey) {
-    String url = monolithUrl + "/internal/wallets/" + request.getWalletId() + "/refund";
+    String url = monolithUrl + "/internal/wallets/{walletId}/refund";
 
     HttpHeaders headers = internalHeaderProvider.createHeaders();
     headers.set("Content-Type", "application/json");
@@ -156,7 +153,8 @@ public class WalletClient {
 
     ResponseEntity<RefundResponse> response =
         writeRestTemplate.exchange(
-            url, HttpMethod.POST, new HttpEntity<>(request, headers), RefundResponse.class);
+            url, HttpMethod.POST, new HttpEntity<>(request, headers), RefundResponse.class,
+            request.getWalletId());
 
     log.info(
         "환불 처리 완료: walletId={}, storeId={}, amount={}, idempotencyKey={}",
@@ -188,13 +186,14 @@ public class WalletClient {
   @CircuitBreaker(name = "walletClientRecovery", fallbackMethod = "checkPaymentForRecoveryFallback")
   @Retry(name = "walletClientRecovery", fallbackMethod = "checkPaymentForRecoveryFallback")
   public PaymentCheckResponse checkPaymentForRecovery(String idempotencyKey) {
-    String url = monolithUrl + "/internal/payments/check?idempotencyKey=" + idempotencyKey;
+    String url = monolithUrl + "/internal/payments/check?idempotencyKey={idempotencyKey}";
 
     HttpHeaders headers = internalHeaderProvider.createHeaders();
 
     ResponseEntity<PaymentCheckResponse> response =
         recoveryRestTemplate.exchange(
-            url, HttpMethod.GET, new HttpEntity<>(headers), PaymentCheckResponse.class);
+            url, HttpMethod.GET, new HttpEntity<>(headers), PaymentCheckResponse.class,
+            idempotencyKey);
 
     return response.getBody();
   }
@@ -211,7 +210,7 @@ public class WalletClient {
   @CircuitBreaker(name = "walletClientRecovery", fallbackMethod = "refundForRecoveryFallback")
   @Retry(name = "walletClientRecovery", fallbackMethod = "refundForRecoveryFallback")
   public RefundResponse refundForRecovery(RefundRequest request, String idempotencyKey) {
-    String url = monolithUrl + "/internal/wallets/" + request.getWalletId() + "/refund";
+    String url = monolithUrl + "/internal/wallets/{walletId}/refund";
 
     HttpHeaders headers = internalHeaderProvider.createHeaders();
     headers.set("Content-Type", "application/json");
@@ -220,7 +219,8 @@ public class WalletClient {
     try {
       ResponseEntity<RefundResponse> response =
           recoveryRestTemplate.exchange(
-              url, HttpMethod.POST, new HttpEntity<>(request, headers), RefundResponse.class);
+              url, HttpMethod.POST, new HttpEntity<>(request, headers), RefundResponse.class,
+              request.getWalletId());
 
       log.info(
           "환불 처리 완료 (복구): walletId={}, storeId={}, amount={}, idempotencyKey={}",

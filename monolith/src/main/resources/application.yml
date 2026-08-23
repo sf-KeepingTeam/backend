@@ -62,7 +62,16 @@ logging:
 # 결제 설정 (토스페이먼츠)
 payment:
   pin:
-    token-ttl-seconds: 60   # PIN 검증 토큰 수명(초). qr-service approve 시 사용
+    token-ttl-seconds: 60   # PIN 검증 토큰 수명(초). qr-service approve 시 사용 (intent 토큰)
+    session-token:
+      enabled: false          # 세션 토큰 발급 허용 (기본 꺼짐 — 인프라가 Redis 공유 확인 후 켬)
+      ttl-seconds: 180        # 세션 토큰 수명(초)
+      max-uses: 5             # 토큰 1개당 최대 결제 건수 (qr: mu 클레임)
+      max-amount-per-use: 100000   # 건당 최대 금액(원) (qr: amax 클레임)
+      max-amount-total: 300000     # 세션 누적 최대 금액(원) (qr: atot 클레임)
+    rate-limit:
+      enabled: true           # 기본 켬 — 보안 기능이지 성능 기능이 아니다. 비상 시에만 false
+      per-minute: 10          # 고객당 분당 PIN 검증 상한 (Argon2 고갈 공격 방어)
   provider: toss  # 기본 결제 제공자 (toss, kakao, naver 등)
   toss:
     mode: ${TOSS_MODE:stub}   # stub(기본, 로컬/테스트) | real(실제 토스 API 호출)

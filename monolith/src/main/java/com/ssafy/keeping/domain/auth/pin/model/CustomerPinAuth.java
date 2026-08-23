@@ -37,6 +37,14 @@ public class CustomerPinAuth {
   @Column(name = "updated_at", nullable = false)
   private LocalDateTime updatedAt; // 마지막 변경 시각
 
+  /**
+   * 마지막 성공 검증 시각.
+   *
+   * <p>현재 읽는 곳이 없다. 성능 측정(result.md §4-6)에서 성공 경로의 불필요한 UPDATE 를
+   * 제거하면서 갱신을 중단했다. 컬럼과 필드는 감사 목적으로 남긴다 —
+   * 삭제하면 마이그레이션이 따라오고 운영 프로필은 ddl-auto=validate 다.
+   * 다시 쓰려면 갱신 비용(결제당 UPDATE 1건)을 측정하고 시작하라.
+   */
   @Column(name = "last_verify_at")
-  private LocalDateTime lastVerifyAt; // 마지막 성공 검증 시각
+  private LocalDateTime lastVerifyAt;
 }

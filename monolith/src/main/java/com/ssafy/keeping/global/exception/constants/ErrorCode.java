@@ -125,6 +125,7 @@ public enum ErrorCode {
   PIN_LOCKED(HttpStatus.LOCKED, "PIN 입력이 일정 시간 잠겨 있습니다. 잠시 후 다시 시도하세요."), // 423 Locked
   PIN_LENGTH_INVALID(HttpStatus.BAD_REQUEST, "결제 비밀번호(PIN)의 길이는 6자리 이여야 합니다."),
   INTENT_PUBLIC_ID_REQUIRED(HttpStatus.BAD_REQUEST, "결제 요청 ID(intentPublicId)는 필수입니다."),
+  PIN_TOKEN_RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "PIN 검증 요청이 너무 잦습니다. 잠시 후 다시 시도하세요."), // 429
 
   // 자금/한도 관련
   FUNDS_INSUFFICIENT(HttpStatus.PAYMENT_REQUIRED, "잔액이 부족합니다."),

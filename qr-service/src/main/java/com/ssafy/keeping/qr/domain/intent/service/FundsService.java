@@ -7,7 +7,6 @@ import com.ssafy.keeping.qr.common.exception.CustomException;
 import com.ssafy.keeping.qr.common.exception.ErrorCode;
 import com.ssafy.keeping.qr.domain.intent.model.PaymentIntent;
 import com.ssafy.keeping.qr.domain.intent.model.PaymentIntentItem;
-import com.ssafy.keeping.qr.domain.intent.repository.PaymentIntentRepository;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import java.util.List;
 import java.util.UUID;
@@ -26,7 +25,6 @@ public class FundsService {
 
   private final WalletClient walletClient;
   private final PaymentRecoveryService paymentRecoveryService;
-  private final PaymentIntentRepository paymentIntentRepository;
   private final IntentStatusUpdater intentStatusUpdater;
 
   /**

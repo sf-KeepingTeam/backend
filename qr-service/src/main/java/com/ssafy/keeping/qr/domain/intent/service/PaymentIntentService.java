@@ -377,8 +377,9 @@ public class PaymentIntentService {
         throw new CustomException(ErrorCode.PAYMENT_INTENT_STATUS_CONFLICT);
       }
       if (intent.getExpiresAt() != null && now.isAfter(intent.getExpiresAt())) {
-        intent.markExpired(now);
-        intentRepository.save(intent);
+        // [TX expire] — 이 트랜잭션은 곧 롤백되므로 EXPIRED 를 여기서 전이하면 사라진다.
+        // REQUIRES_NEW 로 별도 커밋한 뒤 예외를 던진다 (finalizeDeclined 와 동일 규약).
+        approveHelper.finalizeExpired(intent.getIntentId(), slot.getId());
         throw new CustomException(ErrorCode.PAYMENT_INTENT_EXPIRED);
       }
       if (!Objects.equals(intent.getCustomerId(), customerId)) {
@@ -392,18 +393,17 @@ public class PaymentIntentService {
       if (useTokenPathLegacy) {
         // 토큰 로컬 검증 (JPA 리포지토리 호출 0건, Redis jti 기록만)
         try {
-          pinTokenVerifier.verify(req.getPinToken(), intentPublicId);
+          Long tokenCustomerId = pinTokenVerifier.verify(req.getPinToken(), intentPublicId, customerId, intent.getAmount());
+          log.debug("[PIN_TOKEN] legacy path verified: tokenCustomerId={}", tokenCustomerId);
         } catch (CustomException e) {
-          intent.markDeclined(now);
-          intentRepository.save(intent);
+          approveHelper.finalizeDeclined(intent.getIntentId(), slot.getId());
           throw e;
         }
       } else {
         // 기존 PIN 검증 (모놀리식 서버 검사)
         boolean pinOk = customerClient.verifyPin(customerId, req.getPin());
         if (!pinOk) {
-          intent.markDeclined(now);
-          intentRepository.save(intent);
+          approveHelper.finalizeDeclined(intent.getIntentId(), slot.getId());
           throw new CustomException(ErrorCode.PIN_INVALID);
         }
       }
@@ -419,8 +419,7 @@ public class PaymentIntentService {
       }
 
       if (!funds.isSufficient()) {
-        intent.markDeclined(now);
-        intentRepository.save(intent);
+        approveHelper.finalizeDeclined(intent.getIntentId(), slot.getId());
         String errorCode = funds.getErrorCode();
         if ("PAYMENT_IN_PROGRESS".equals(errorCode)) {
           throw new CustomException(ErrorCode.PAYMENT_IN_PROGRESS);
@@ -490,6 +489,18 @@ public class PaymentIntentService {
     }
 
     // ───────────────────────────────────────────────
+    // [TX-B expire] intent 만료 — EXPIRED 를 DB 에 영속 (커밋 보장) 후 예외
+    //
+    // TX-A 안에서 전이 + 예외를 하면 TX-A 롤백으로 전이가 사라진다.
+    // ───────────────────────────────────────────────
+    if (phaseA.isExpired()) {
+      log.warn("[APPROVE_PHASE] phase=EXPIRED intentId={} expiresAt={}",
+          phaseA.getIntentId(), phaseA.getExpiresAt());
+      approveHelper.finalizeExpired(phaseA.getIntentId(), phaseA.getIdemSlotId());
+      throw new CustomException(ErrorCode.PAYMENT_INTENT_EXPIRED);
+    }
+
+    // ───────────────────────────────────────────────
     // [NO-TX] PIN 검증 — DB 커넥션 미점유
     //
     // 토큰 경로: 로컬 JWT 검증 + Redis jti 기록 (monolith 호출 0)
@@ -502,7 +513,8 @@ public class PaymentIntentService {
     if (useTokenPath) {
       // ── 토큰 로컬 검증 (JPA 리포지토리 호출 0건) ──
       try {
-        pinTokenVerifier.verify(req.getPinToken(), intentPublicId);
+        Long tokenCustomerId = pinTokenVerifier.verify(req.getPinToken(), intentPublicId, customerId, phaseA.getAmount());
+        log.debug("[PIN_TOKEN] split path verified: tokenCustomerId={}", tokenCustomerId);
       } catch (CustomException e) {
         log.warn("[APPROVE_PHASE] phase=PIN_TOKEN_FAIL intentId={} error={}",
             phaseA.getIntentId(), e.getErrorCode());

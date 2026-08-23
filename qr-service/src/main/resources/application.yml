@@ -102,8 +102,10 @@ payment:
   approve:
     split-transaction: true
   pin:
-    token-enabled: true
+    token-enabled: false
     token-ttl-seconds: 60
+    session-token:
+      revocation-check: false   # Redis 공유 확인 후 true 로 켬 (기본 false)
 
 # 로드테스트 백도어 (테스트용)
 loadtest:

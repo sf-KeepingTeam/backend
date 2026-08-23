@@ -36,8 +36,28 @@ public class PaymentTuningProperties {
     @Getter
     @Setter
     public static class Pin {
-        /** 세트 #33이 추가할 필드 자리 */
-        private boolean tokenEnabled = true;
+        /**
+         * PIN 토큰 로컬 검증 사용 여부.
+         *
+         * <p>기본값 false — v3 재측정(result.md §7-4 ③)에서 현 설계의 토큰이
+         * Argon2 호출 횟수를 줄이지 못하고 순손실(무부하 수용량 −5.6%)로 확인됐다.
+         * 세션 토큰 재설계(세트 #41·#42) 후 재측정으로 이득이 확인되면 켠다.
+         */
+        private boolean tokenEnabled = false;
         private int tokenTtlSeconds = 60;
+        private SessionToken sessionToken = new SessionToken();
+
+        @Getter
+        @Setter
+        public static class SessionToken {
+            /**
+             * 폐기 시각 확인 여부 (Redis {@code pin-token:revoke:{customerId}} 키 조회).
+             *
+             * <p>기본값 false — monolith 와 qr-service 가 같은 Redis 인스턴스를 바라보는지
+             * 인프라가 확인하기 전까지는 꺼둔다. 공유가 확인되면 true 로 켠다.
+             * 꺼져 있으면 폐기 경로가 작동하지 않으며, 토큰 TTL(180초)이 유일한 방어선이다.
+             */
+            private boolean revocationCheck = false;
+        }
     }
 }

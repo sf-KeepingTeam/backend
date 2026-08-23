@@ -49,6 +49,9 @@ public enum ErrorCode {
   PIN_TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "PIN 토큰이 만료되었습니다."),
   PIN_TOKEN_INTENT_MISMATCH(HttpStatus.FORBIDDEN, "PIN 토큰의 결제 요청 ID가 일치하지 않습니다."),
   PIN_TOKEN_REUSED(HttpStatus.CONFLICT, "이미 사용된 PIN 토큰입니다."),
+  PIN_TOKEN_SUBJECT_MISMATCH(HttpStatus.FORBIDDEN, "PIN 토큰의 사용자가 일치하지 않습니다."),
+  PIN_TOKEN_AMOUNT_EXCEEDED(HttpStatus.FORBIDDEN, "PIN 토큰의 결제 한도를 초과했습니다."),
+  PIN_TOKEN_REVOKED(HttpStatus.UNAUTHORIZED, "PIN 토큰이 무효화되었습니다."),
 
   // 자금/한도 관련
   FUNDS_INSUFFICIENT(HttpStatus.PAYMENT_REQUIRED, "잔액이 부족합니다."),

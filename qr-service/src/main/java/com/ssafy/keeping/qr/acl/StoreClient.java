@@ -62,11 +62,12 @@ public class StoreClient {
   @CircuitBreaker(name = "storeClient", fallbackMethod = "fetchFromMonolithFallback")
   @Retry(name = "storeClient", fallbackMethod = "fetchFromMonolithFallback")
   public Optional<StoreResponse> fetchFromMonolithDirect(Long storeId) {
-    String url = monolithUrl + "/internal/stores/" + storeId;
+    String url = monolithUrl + "/internal/stores/{storeId}";
     HttpHeaders headers = internalHeaderProvider.createHeaders();
 
     ResponseEntity<StoreResponse> response =
-        restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), StoreResponse.class);
+        restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), StoreResponse.class,
+            storeId);
 
     return Optional.ofNullable(response.getBody());
   }
@@ -76,12 +77,13 @@ public class StoreClient {
   @Retry(name = "storeClient", fallbackMethod = "fetchFromMonolithFallback")
   public Optional<StoreResponse> fetchFromMonolithAndCache(Long storeId) {
     log.debug("Store 조회 - Cache Miss, 모놀리스 호출: storeId={}", storeId);
-    String url = monolithUrl + "/internal/stores/" + storeId;
+    String url = monolithUrl + "/internal/stores/{storeId}";
 
     HttpHeaders headers = internalHeaderProvider.createHeaders();
 
     ResponseEntity<StoreResponse> response =
-        restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), StoreResponse.class);
+        restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), StoreResponse.class,
+            storeId);
 
     StoreResponse store = response.getBody();
     if (store != null) {

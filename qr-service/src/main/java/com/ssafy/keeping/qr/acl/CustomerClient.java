@@ -34,13 +34,14 @@ public class CustomerClient {
   @CircuitBreaker(name = "customerClient", fallbackMethod = "getCustomerFallback")
   @Retry(name = "customerClient", fallbackMethod = "getCustomerFallback")
   public Optional<CustomerResponse> getCustomer(Long customerId) {
-    String url = monolithUrl + "/internal/customers/" + customerId;
+    String url = monolithUrl + "/internal/customers/{customerId}";
 
     HttpHeaders headers = internalHeaderProvider.createHeaders();
 
     ResponseEntity<CustomerResponse> response =
         restTemplate.exchange(
-            url, HttpMethod.GET, new HttpEntity<>(headers), CustomerResponse.class);
+            url, HttpMethod.GET, new HttpEntity<>(headers), CustomerResponse.class,
+            customerId);
 
     return Optional.ofNullable(response.getBody());
   }
@@ -54,7 +55,7 @@ public class CustomerClient {
   @CircuitBreaker(name = "customerClient", fallbackMethod = "verifyPinFallback")
   @Retry(name = "customerClient", fallbackMethod = "verifyPinFallback")
   public boolean verifyPin(Long customerId, String pin) {
-    String url = monolithUrl + "/internal/customers/" + customerId + "/pin-verify";
+    String url = monolithUrl + "/internal/customers/{customerId}/pin-verify";
 
     HttpHeaders headers = internalHeaderProvider.createHeaders();
     headers.set("Content-Type", "application/json");
@@ -63,7 +64,8 @@ public class CustomerClient {
 
     ResponseEntity<PinVerifyResponse> response =
         restTemplate.exchange(
-            url, HttpMethod.POST, new HttpEntity<>(body, headers), PinVerifyResponse.class);
+            url, HttpMethod.POST, new HttpEntity<>(body, headers), PinVerifyResponse.class,
+            customerId);
 
     return response.getBody() != null && response.getBody().isVerified();
   }
