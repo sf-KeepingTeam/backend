@@ -207,6 +207,50 @@ services:
     networks:
       - keeping-network
 
+  # ---------------------------------------------------------------------------
+  # mysqld_exporter — 구성1 의 MySQL 내부 지표.
+  #
+  #   구성2(main/payment)에는 이미 붙어 있는데 여기만 없어서
+  #   result.md §11-9 에 "구성1 쿼리 프로파일은 추론" 이라는 공백이 남아 있었다.
+  #   ①②③④ 를 allinone 에서 재기로 했으므로(final_0825.md §1) 반드시 필요하다.
+  #
+  #   ⚠️ 이 MySQL 인스턴스에는 DB 가 둘이다 (ssafy_fintech_db + payment_service).
+  #      익스포터는 인스턴스 단위라 둘을 합친 값이 나온다. 그게 맞다 —
+  #      구성1 의 병목은 "두 서비스가 한 MySQL 을 나눠 쓴다" 는 것이기 때문이다.
+  #
+  #   ⚠️ 이 컨테이너가 붙기 전/후는 측정 환경이 다르다.
+  #      C0(1.28 건/초)와 절대값을 비교할 때 이 차이를 감안한다.
+  # ---------------------------------------------------------------------------
+  mysqld-exporter:
+    image: prom/mysqld-exporter:v0.15.1
+    container_name: allinone-mysqld-exporter
+    environment:
+      # v0.15 부터 DATA_SOURCE_NAME 이 제거됐다. 접속 정보는 my.cnf 로 준다.
+      #   MYSQLD_EXPORTER_PASSWORD 는 my.cnf 의 password 를 덮어쓴다(둘 중 하나면 된다).
+      - MYSQLD_EXPORTER_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    volumes:
+      # 배포 시 아래로 생성한다 (deploy/all-in-one/ 에서):
+      #   printf '[client]\nuser=root\nhost=mysql\nport=3306\n' > mysqld-exporter.cnf
+      - ./mysqld-exporter.cnf:/cfg/.my.cnf:ro
+    command:
+      - --config.my-cnf=/cfg/.my.cnf
+      - --collect.global_status
+      - --collect.global_variables
+      - --collect.info_schema.innodb_metrics
+      - --collect.info_schema.processlist
+      - --collect.perf_schema.tablelocks
+      - --collect.perf_schema.eventswaits
+      - --collect.perf_schema.indexiowaits
+      - --collect.perf_schema.tableiowaits
+    ports:
+      - "9104:9104"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - keeping-network
+
 volumes:
   mysql_data:
   redis_data:
