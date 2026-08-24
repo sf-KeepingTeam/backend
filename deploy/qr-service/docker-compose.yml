@@ -133,6 +133,49 @@ services:
     networks:
       - keeping-network
 
+
+  # ---------------------------------------------------------------------------
+  # mysqld_exporter — "MySQL 이 왜 못 받는가"에 답하기 위한 계측
+  # ---------------------------------------------------------------------------
+  #  측정 내내 병목은 이 서비스의 DB 였다(result.md 4장/9장/10장).
+  #    Hikari pending 132~183 · active 20/20 · tomcat 200/200
+  #  그런데 풀을 20 -> 60 으로 3배 늘렸더니 처리량이 3.2% 나빠졌다.
+  #  즉 커넥션이 부족한 게 아니라, 커넥션을 받아도 MySQL 이 일을 못 끝낸다는 뜻인데
+  #  MySQL 이 그 시간에 무엇을 하고 있었는지 볼 방법이 없었다.
+  #
+  #  이 exporter 가 답할 후보 4가지:
+  #    슬로우 쿼리   mysql_global_status_slow_queries
+  #    락 대기       mysql_global_status_innodb_row_lock_waits / _time_avg
+  #    버퍼풀 미스   innodb_buffer_pool_reads vs innodb_buffer_pool_read_requests
+  #    커밋 fsync    mysql_global_status_innodb_data_fsyncs
+  #
+  #  주의: 이 컨테이너가 붙기 전/후는 측정 환경이 다르다.
+  #        이번 러닝은 진단용이며 F6/F7 과 절대값을 비교하지 않는다.
+  mysqld-exporter:
+    image: prom/mysqld-exporter:v0.15.1
+    container_name: qr-mysqld-exporter
+    environment:
+      # v0.15.x 는 DATA_SOURCE_NAME 을 계속 지원한다(deprecated 지만 동작).
+      # 실패하면 --config.my-cnf 방식으로 바꿀 것.
+      - DATA_SOURCE_NAME=root:${MYSQL_ROOT_PASSWORD}@(mysql:3306)/
+    command:
+      - --collect.global_status
+      - --collect.global_variables
+      - --collect.info_schema.innodb_metrics
+      - --collect.info_schema.processlist
+      - --collect.perf_schema.tablelocks
+      - --collect.perf_schema.eventswaits
+      - --collect.perf_schema.indexiowaits
+      - --collect.perf_schema.tableiowaits
+    ports:
+      - "9104:9104"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - keeping-network
+
 volumes:
   mysql_data:
   redis_data:
