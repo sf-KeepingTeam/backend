@@ -18,12 +18,32 @@ public class PaymentTuningProperties {
     private Notification notification = new Notification();
     private Approve approve = new Approve();
     private Pin pin = new Pin();
+    private Outbox outbox = new Outbox();
 
     @Getter
     @Setter
     public static class Notification {
         /** true 면 알림을 AFTER_COMMIT + @Async 로 전송, false 면 기존 동기 경로 */
         private boolean async = true;
+
+        /**
+         * 알림 전송 수단. {@code "http"} 이면 기존 REST 경로, {@code "kafka"} 이면 아웃박스 → Kafka.
+         *
+         * <p>String 으로 둔 이유: enum 바인딩 실패 시 앱 기동이 깨지는데, 알림 경로 오타 하나로
+         * 서비스 전체가 죽는 것은 과한 대가다. 판정은 쓰는 쪽에서 {@code "kafka".equals(transport)}
+         * 로 한다.
+         */
+        private String transport = "http";
+    }
+
+    @Getter
+    @Setter
+    public static class Outbox {
+        private boolean enabled = false;
+        private long pollIntervalMs = 500;
+        private int batchSize = 100;
+        private int maxRetry = 10;
+        private int retentionDays = 7;
     }
 
     @Getter

@@ -72,6 +72,12 @@ services:
       - PAYMENT_PIN_SESSION_TOKEN_MAX_AMOUNT_TOTAL=${PAYMENT_PIN_SESSION_TOKEN_MAX_AMOUNT_TOTAL:-300000}
       - PAYMENT_PIN_RATE_LIMIT_ENABLED=${PAYMENT_PIN_RATE_LIMIT_ENABLED:-true}
       - PAYMENT_PIN_RATE_LIMIT_PER_MINUTE=${PAYMENT_PIN_RATE_LIMIT_PER_MINUTE:-10}
+
+      # ── v3 Kafka 컨슈머 (#53) ───────────────────────────────────────────
+      #   기본값 = 컨슈머 꺼짐. .env 를 비워도 기존 동작 유지.
+      #   Kafka 전환: NOTIFICATION_KAFKA_CONSUMER_ENABLED=true + KAFKA_BOOTSTRAP_SERVERS 설정
+      - NOTIFICATION_KAFKA_CONSUMER_ENABLED=${NOTIFICATION_KAFKA_CONSUMER_ENABLED:-false}
+      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-}
     depends_on:
       mysql:
         condition: service_healthy

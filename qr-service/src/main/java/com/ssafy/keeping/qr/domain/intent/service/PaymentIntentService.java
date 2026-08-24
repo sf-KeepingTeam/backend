@@ -12,6 +12,7 @@ import com.ssafy.keeping.qr.acl.dto.StoreResponse;
 import com.ssafy.keeping.qr.common.IdUtil;
 import com.ssafy.keeping.qr.common.exception.CustomException;
 import com.ssafy.keeping.qr.common.exception.ErrorCode;
+import com.ssafy.keeping.qr.config.PaymentTuningProperties;
 import com.ssafy.keeping.qr.domain.idempotency.constant.IdemActorType;
 import com.ssafy.keeping.qr.domain.idempotency.constant.IdemStatus;
 import com.ssafy.keeping.qr.domain.idempotency.dto.IdemBegin;
@@ -22,17 +23,22 @@ import com.ssafy.keeping.qr.domain.intent.canonical.CanonicalApprove;
 import com.ssafy.keeping.qr.domain.intent.canonical.CanonicalInitiate;
 import com.ssafy.keeping.qr.domain.intent.constant.PaymentStatus;
 import com.ssafy.keeping.qr.domain.intent.dto.*;
-import com.ssafy.keeping.qr.domain.intent.model.PaymentIntent;
-import com.ssafy.keeping.qr.domain.intent.model.PaymentIntentItem;
-import com.ssafy.keeping.qr.domain.intent.repository.PaymentIntentItemRepository;
-import com.ssafy.keeping.qr.domain.intent.repository.PaymentIntentRepository;
-import com.ssafy.keeping.qr.config.PaymentTuningProperties;
 import com.ssafy.keeping.qr.domain.intent.event.PaymentApprovedEvent;
 import com.ssafy.keeping.qr.domain.intent.event.PaymentRequestedEvent;
+import com.ssafy.keeping.qr.domain.intent.model.PaymentIntent;
+import com.ssafy.keeping.qr.domain.intent.model.PaymentIntentItem;
+import com.ssafy.keeping.qr.domain.intent.outbox.OutboxStatus;
+import com.ssafy.keeping.qr.domain.intent.outbox.PaymentNotificationEvent;
+import com.ssafy.keeping.qr.domain.intent.outbox.PaymentOutbox;
+import com.ssafy.keeping.qr.domain.intent.outbox.PaymentOutboxRepository;
+import com.ssafy.keeping.qr.domain.intent.repository.PaymentIntentItemRepository;
+import com.ssafy.keeping.qr.domain.intent.repository.PaymentIntentRepository;
 import com.ssafy.keeping.qr.domain.qr.model.QrScanSession;
 import com.ssafy.keeping.qr.domain.qr.service.QrTokenService;
+import jakarta.annotation.PostConstruct;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -58,12 +64,14 @@ public class PaymentIntentService {
   private final CustomerClient customerClient;
   private final NotificationClient notificationClient;
   private final ObjectMapper canonicalObjectMapper;
+  private final ObjectMapper primaryObjectMapper;
   private final Clock clock;
   private final ApplicationEventPublisher eventPublisher;
   private final PaymentTuningProperties tuningProperties;
   private final ApproveTransactionHelper approveHelper;
   private final TransactionTemplate transactionTemplate;
   private final PinTokenVerifier pinTokenVerifier;
+  private final PaymentOutboxRepository outboxRepository;
 
   public PaymentIntentService(
       PaymentIntentRepository intentRepository,
@@ -76,12 +84,14 @@ public class PaymentIntentService {
       CustomerClient customerClient,
       NotificationClient notificationClient,
       @Qualifier("canonicalObjectMapper") ObjectMapper canonicalObjectMapper,
+      ObjectMapper primaryObjectMapper,
       Clock clock,
       ApplicationEventPublisher eventPublisher,
       PaymentTuningProperties tuningProperties,
       ApproveTransactionHelper approveHelper,
       TransactionTemplate transactionTemplate,
-      PinTokenVerifier pinTokenVerifier) {
+      PinTokenVerifier pinTokenVerifier,
+      PaymentOutboxRepository outboxRepository) {
     this.intentRepository = intentRepository;
     this.itemRepository = itemRepository;
     this.idempotencyService = idempotencyService;
@@ -92,12 +102,25 @@ public class PaymentIntentService {
     this.customerClient = customerClient;
     this.notificationClient = notificationClient;
     this.canonicalObjectMapper = canonicalObjectMapper;
+    this.primaryObjectMapper = primaryObjectMapper;
     this.clock = clock;
     this.eventPublisher = eventPublisher;
     this.tuningProperties = tuningProperties;
     this.approveHelper = approveHelper;
     this.transactionTemplate = transactionTemplate;
     this.pinTokenVerifier = pinTokenVerifier;
+    this.outboxRepository = outboxRepository;
+  }
+
+  @PostConstruct
+  public void validateTransportOutboxConsistency() {
+    if ("kafka".equals(tuningProperties.getNotification().getTransport())
+        && !tuningProperties.getOutbox().isEnabled()) {
+      throw new IllegalStateException(
+          "payment.notification.transport=kafka 인데 payment.outbox.enabled=false 다. "
+        + "아웃박스에 행만 쌓이고 아무도 발행하지 않아 알림이 영구히 유실된다. "
+        + "outbox.enabled=true 로 켜거나 transport=http 로 되돌려라.");
+    }
   }
 
   /** 결제 의도 생성 세션 토큰 기반 (QR 스캔 후 발급받은 토큰) */
@@ -240,13 +263,17 @@ public class PaymentIntentService {
     PaymentIntentDetailResponse res = PaymentIntentDetailResponse.from(intent, itemViews);
 
     // 결제 요청 알림
-    if (tuningProperties.getNotification().isAsync()) {
-      // 비동기: 커밋 후 리스너에서 발송 (DB 커넥션 점유 없음)
+    if ("kafka".equals(tuningProperties.getNotification().getTransport())) {
+      // transport=kafka: 아웃박스 행을 같은 @Transactional 안에서 저장
+      outboxRepository.save(buildOutboxRow("PAYMENT_REQUESTED", intent.getIntentId(),
+          session.getCustomerId(), intent.getStoreId(), intent.getAmount()));
+    } else if (tuningProperties.getNotification().isAsync()) {
+      // transport=http, async=true: 커밋 후 리스너에서 발송 (DB 커넥션 점유 없음)
       eventPublisher.publishEvent(new PaymentRequestedEvent(
           intent.getIntentId(), session.getCustomerId(),
           intent.getStoreId(), intent.getAmount()));
     } else {
-      // 동기 폴백 (payment.notification.async=false)
+      // transport=http, async=false: 동기 폴백
       try {
         StoreResponse store = storeClient.getStore(intent.getStoreId()).orElse(null);
         String storeName = store != null ? store.getStoreName() : "매장";
@@ -442,7 +469,11 @@ public class PaymentIntentService {
       PaymentIntentDetailResponse res = PaymentIntentDetailResponse.from(intent, itemViews);
 
       // 결제 승인 알림
-      if (tuningProperties.getNotification().isAsync()) {
+      if ("kafka".equals(tuningProperties.getNotification().getTransport())) {
+        // transport=kafka: 아웃박스 행을 같은 TransactionTemplate TX 안에서 저장
+        outboxRepository.save(buildOutboxRow("PAYMENT_APPROVED", intent.getIntentId(),
+            customerId, intent.getStoreId(), intent.getAmount()));
+      } else if (tuningProperties.getNotification().isAsync()) {
         eventPublisher.publishEvent(new PaymentApprovedEvent(
             intent.getIntentId(), customerId,
             intent.getStoreId(), intent.getAmount()));
@@ -611,11 +642,13 @@ public class PaymentIntentService {
 
     // ───────────────────────────────────────────────
     // [TX-B] intent 재조회 + APPROVED + 멱등 완료
+    //        transport=kafka 이면 아웃박스 행도 이 TX에서 INSERT
     // ───────────────────────────────────────────────
     PaymentIntentDetailResponse res;
     try {
       res = approveHelper.finalizeApproved(
-          phaseA.getIntentId(), phaseA.getIdemSlotId(), phaseA.getItemViews());
+          phaseA.getIntentId(), phaseA.getIdemSlotId(), phaseA.getItemViews(),
+          customerId, phaseA.getStoreId(), phaseA.getAmount());
     } catch (ObjectOptimisticLockingFailureException e) {
       // @Version 충돌 — 재시도하지 않는다. 멱등 경로로 흡수.
       log.warn("[APPROVE_ORPHAN] intentId={} reason=OPTIMISTIC_LOCK_CONFLICT",
@@ -628,8 +661,13 @@ public class PaymentIntentService {
 
     // ───────────────────────────────────────────────
     // [AFTER] 알림 (세트 #30 이벤트 — TX 밖)
+    //
+    // transport=kafka 이면 아웃박스가 TX-B 에서 이미 기록했다.
+    // 여기서는 아무것도 하지 않는다 (async 플래그는 무시).
     // ───────────────────────────────────────────────
-    if (tuningProperties.getNotification().isAsync()) {
+    if ("kafka".equals(tuningProperties.getNotification().getTransport())) {
+      // 아웃박스가 TX-B 에서 이미 기록됐다. 여기선 아무것도 안 한다.
+    } else if (tuningProperties.getNotification().isAsync()) {
       eventPublisher.publishEvent(new PaymentApprovedEvent(
           phaseA.getIntentId(), customerId,
           phaseA.getStoreId(), phaseA.getAmount()));
@@ -760,5 +798,40 @@ public class PaymentIntentService {
 
   private PaymentIntentDetailResponse rebuildFromResource(UUID intentPublicId) {
     return getDetail(intentPublicId);
+  }
+
+  /**
+   * 아웃박스 행을 만든다. 직렬화 실패 시 RuntimeException 으로 전파해 트랜잭션을 롤백시킨다.
+   */
+  private PaymentOutbox buildOutboxRow(
+      String eventType, Long intentId, Long customerId, Long storeId, Long amount) {
+    String eventId = UUID.randomUUID().toString();
+    PaymentNotificationEvent event = PaymentNotificationEvent.builder()
+        .eventId(eventId)
+        .eventType(eventType)
+        .occurredAt(OffsetDateTime.now())
+        .intentId(intentId)
+        .customerId(customerId)
+        .storeId(storeId)
+        .amount(amount)
+        .build();
+
+    String payload;
+    try {
+      payload = primaryObjectMapper.writeValueAsString(event);
+    } catch (JsonProcessingException e) {
+      throw new RuntimeException("아웃박스 payload 직렬화 실패: " + eventType, e);
+    }
+
+    return PaymentOutbox.builder()
+        .eventId(eventId)
+        .aggregateType("PAYMENT_INTENT")
+        .aggregateId(intentId)
+        .eventType(eventType)
+        .partitionKey(String.valueOf(customerId))
+        .payload(payload)
+        .status(OutboxStatus.PENDING)
+        .retryCount(0)
+        .build();
   }
 }

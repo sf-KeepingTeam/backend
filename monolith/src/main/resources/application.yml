@@ -5,11 +5,17 @@ spring:
   application:
     name: monolith  # Tracing 로그에 표시될 서비스명
 
+  autoconfigure:
+    exclude: org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+
   profiles:
     active: local  # 기본 프로필: local
 
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:}
 
   jpa:
     properties:
@@ -107,3 +113,8 @@ wallet:
     cron: "0 40 3 * * *"
     page-size: 1000
 
+# 알림 Kafka 컨슈머
+notification:
+  kafka:
+    consumer:
+      enabled: false

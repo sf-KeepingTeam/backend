@@ -33,6 +33,10 @@ spring:
         format_sql: true
         dialect: org.hibernate.dialect.MySQLDialect
 
+  # Kafka (아웃박스 퍼블리셔용 — 비어 있으면 Kafka 빈이 생성되지 않는다)
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:}
+
   # Spring Cache (Redis)
   cache:
     type: redis
@@ -99,6 +103,13 @@ slack:
 payment:
   notification:
     async: true
+    transport: http            # http | kafka (기본 http)
+  outbox:
+    enabled: false
+    poll-interval-ms: 500
+    batch-size: 100
+    max-retry: 10
+    retention-days: 7
   approve:
     split-transaction: true
   pin:

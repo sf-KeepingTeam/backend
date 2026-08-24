@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ssafy.keeping.qr.common.exception.CustomException;
 import com.ssafy.keeping.qr.common.exception.ErrorCode;
+import com.ssafy.keeping.qr.config.PaymentTuningProperties;
 import com.ssafy.keeping.qr.domain.idempotency.constant.IdemActorType;
 import com.ssafy.keeping.qr.domain.idempotency.constant.IdemStatus;
 import com.ssafy.keeping.qr.domain.idempotency.dto.IdemBegin;
@@ -18,10 +19,15 @@ import com.ssafy.keeping.qr.domain.intent.dto.PaymentIntentDetailResponse;
 import com.ssafy.keeping.qr.domain.intent.dto.PaymentIntentItemView;
 import com.ssafy.keeping.qr.domain.intent.model.PaymentIntent;
 import com.ssafy.keeping.qr.domain.intent.model.PaymentIntentItem;
+import com.ssafy.keeping.qr.domain.intent.outbox.OutboxStatus;
+import com.ssafy.keeping.qr.domain.intent.outbox.PaymentNotificationEvent;
+import com.ssafy.keeping.qr.domain.intent.outbox.PaymentOutbox;
+import com.ssafy.keeping.qr.domain.intent.outbox.PaymentOutboxRepository;
 import com.ssafy.keeping.qr.domain.intent.repository.PaymentIntentItemRepository;
 import com.ssafy.keeping.qr.domain.intent.repository.PaymentIntentRepository;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -55,7 +61,10 @@ public class ApproveTransactionHelper {
     private final IdempotencyService idempotencyService;
     private final IdempotencyKeyRepository idempotencyKeyRepository;
     private final ObjectMapper canonicalObjectMapper;
+    private final ObjectMapper primaryObjectMapper;
     private final Clock clock;
+    private final PaymentOutboxRepository outboxRepository;
+    private final PaymentTuningProperties tuningProperties;
 
     public ApproveTransactionHelper(
             PaymentIntentRepository intentRepository,
@@ -63,13 +72,19 @@ public class ApproveTransactionHelper {
             IdempotencyService idempotencyService,
             IdempotencyKeyRepository idempotencyKeyRepository,
             @Qualifier("canonicalObjectMapper") ObjectMapper canonicalObjectMapper,
-            Clock clock) {
+            ObjectMapper primaryObjectMapper,
+            Clock clock,
+            PaymentOutboxRepository outboxRepository,
+            PaymentTuningProperties tuningProperties) {
         this.intentRepository = intentRepository;
         this.itemRepository = itemRepository;
         this.idempotencyService = idempotencyService;
         this.idempotencyKeyRepository = idempotencyKeyRepository;
         this.canonicalObjectMapper = canonicalObjectMapper;
+        this.primaryObjectMapper = primaryObjectMapper;
         this.clock = clock;
+        this.outboxRepository = outboxRepository;
+        this.tuningProperties = tuningProperties;
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -183,13 +198,20 @@ public class ApproveTransactionHelper {
      *
      * <p>intent 를 ID 로 재조회하므로 {@code @Version} 낙관적 락이 동시 수정을 감지한다.
      *
+     * <p>transport=kafka 이면 아웃박스 행을 같은 트랜잭션에서 INSERT 한다.
+     * 이벤트 사실(APPROVED)과 아웃박스 행이 같은 커밋에 들어가므로
+     * at-least-once 보장의 기초가 된다.
+     *
      * @return 최종 응답 DTO
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public PaymentIntentDetailResponse finalizeApproved(
             Long intentId,
             Long idemSlotId,
-            List<PaymentIntentItemView> itemViews) {
+            List<PaymentIntentItemView> itemViews,
+            Long customerId,
+            Long storeId,
+            Long amount) {
 
         long t0 = System.currentTimeMillis();
 
@@ -206,6 +228,11 @@ public class ApproveTransactionHelper {
         LocalDateTime now = LocalDateTime.now(clock);
         intent.markApproved(now);
         // JPA dirty checking 으로 flush
+
+        // ── 아웃박스 기록 (transport=kafka 일 때만) ──
+        if ("kafka".equals(tuningProperties.getNotification().getTransport())) {
+            outboxRepository.save(buildOutboxRow("PAYMENT_APPROVED", intentId, customerId, storeId, amount));
+        }
 
         PaymentIntentDetailResponse res = PaymentIntentDetailResponse.from(intent, itemViews);
 
@@ -333,6 +360,41 @@ public class ApproveTransactionHelper {
                 .unitPrice(it.getUnitPriceSnap())
                 .quantity(it.getQuantity())
                 .lineTotal(line)
+                .build();
+    }
+
+    /**
+     * 아웃박스 행을 만든다. 직렬화 실패 시 RuntimeException 으로 전파해 트랜잭션을 롤백시킨다.
+     */
+    private PaymentOutbox buildOutboxRow(
+            String eventType, Long intentId, Long customerId, Long storeId, Long amount) {
+        String eventId = UUID.randomUUID().toString();
+        PaymentNotificationEvent event = PaymentNotificationEvent.builder()
+                .eventId(eventId)
+                .eventType(eventType)
+                .occurredAt(OffsetDateTime.now())
+                .intentId(intentId)
+                .customerId(customerId)
+                .storeId(storeId)
+                .amount(amount)
+                .build();
+
+        String payload;
+        try {
+            payload = primaryObjectMapper.writeValueAsString(event);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("아웃박스 payload 직렬화 실패: " + eventType, e);
+        }
+
+        return PaymentOutbox.builder()
+                .eventId(eventId)
+                .aggregateType("PAYMENT_INTENT")
+                .aggregateId(intentId)
+                .eventType(eventType)
+                .partitionKey(String.valueOf(customerId))
+                .payload(payload)
+                .status(OutboxStatus.PENDING)
+                .retryCount(0)
                 .build();
     }
 }

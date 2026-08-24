@@ -1,5 +1,6 @@
 package com.ssafy.keeping.domain.store.repository;
 
+import com.ssafy.keeping.domain.notification.dto.StoreNotificationView;
 import com.ssafy.keeping.domain.store.constant.StoreStatus;
 import com.ssafy.keeping.domain.store.dto.StorePublicDto;
 import com.ssafy.keeping.domain.store.model.Store;
@@ -76,6 +77,16 @@ public interface StoreRepository extends JpaRepository<Store, Long> {
 
   /** 점주의 모든 매장 조회 (삭제되지 않은 매장만) */
   List<Store> findByOwnerOwnerIdAndDeletedAtIsNull(Long ownerId);
+
+  /** 알림 발송용 매장 프로젝션. s.owner.ownerId 는 FK 컬럼에서 읽혀 조인이 발생하지 않는다. */
+  @Query(
+      """
+    select new com.ssafy.keeping.domain.notification.dto.StoreNotificationView(
+      s.storeName, s.owner.ownerId)
+    from Store s
+    where s.storeId = :storeId
+    """)
+  Optional<StoreNotificationView> findNotificationView(@Param("storeId") Long storeId);
 
   /** 전체 활성 매장 조회 (Cache Warming용) */
   @Query(

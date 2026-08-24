@@ -146,11 +146,15 @@ class PaymentNotificationListenerTest {
                     return cb.doInTransaction(null);
                 });
 
+        ObjectMapper mockPrimaryMapper = mock(ObjectMapper.class);
+        com.ssafy.keeping.qr.domain.intent.outbox.PaymentOutboxRepository mockOutboxRepo =
+                mock(com.ssafy.keeping.qr.domain.intent.outbox.PaymentOutboxRepository.class);
+
         PaymentIntentService service = new PaymentIntentService(
                 mockIntentRepo, mockItemRepo, mockIdemService, mockFundsService,
                 mockQrService, mockMenuClient, mockStoreClient, mockCustomerClient,
-                mockNotifClient, mockMapper, fixedClock, mockPublisher, syncProps,
-                mockApproveHelper, mockTxTemplate, mockPinTokenVerifier);
+                mockNotifClient, mockMapper, mockPrimaryMapper, fixedClock, mockPublisher, syncProps,
+                mockApproveHelper, mockTxTemplate, mockPinTokenVerifier, mockOutboxRepo);
 
         // Intent 스텁
         UUID publicId = UUID.randomUUID();

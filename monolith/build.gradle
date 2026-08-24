@@ -95,6 +95,9 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	implementation 'io.micrometer:micrometer-registry-prometheus'
 
+	// Kafka (알림 컨슈머)
+	implementation 'org.springframework.kafka:spring-kafka'
+
 	// ShedLock (분산 스케줄러 락)
 	implementation 'net.javacrumbs.shedlock:shedlock-spring:5.16.0'
 	implementation 'net.javacrumbs.shedlock:shedlock-provider-redis-spring:5.16.0'

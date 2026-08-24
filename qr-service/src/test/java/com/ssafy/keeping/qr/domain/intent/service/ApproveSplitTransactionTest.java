@@ -24,6 +24,7 @@ import com.ssafy.keeping.qr.domain.intent.dto.ApproveRequest;
 import com.ssafy.keeping.qr.domain.intent.dto.PaymentIntentDetailResponse;
 import com.ssafy.keeping.qr.domain.intent.dto.PaymentIntentItemView;
 import com.ssafy.keeping.qr.domain.intent.model.PaymentIntent;
+import com.ssafy.keeping.qr.domain.intent.outbox.PaymentOutboxRepository;
 import com.ssafy.keeping.qr.domain.intent.repository.PaymentIntentItemRepository;
 import com.ssafy.keeping.qr.domain.intent.repository.PaymentIntentRepository;
 import com.ssafy.keeping.qr.domain.qr.service.QrTokenService;
@@ -69,6 +70,7 @@ class ApproveSplitTransactionTest {
     @Mock private ApproveTransactionHelper approveHelper;
     @Mock private TransactionTemplate transactionTemplate;
     @Mock private PinTokenVerifier pinTokenVerifier;
+    @Mock private PaymentOutboxRepository outboxRepository;
 
     private PaymentIntentService service;
     private PaymentTuningProperties tuningProperties;
@@ -95,9 +97,9 @@ class ApproveSplitTransactionTest {
         service = new PaymentIntentService(
                 intentRepository, itemRepository, idempotencyService,
                 fundsService, qrTokenService, menuClient, storeClient,
-                customerClient, notificationClient, om, fixedClock,
+                customerClient, notificationClient, om, om, fixedClock,
                 eventPublisher, tuningProperties, approveHelper,
-                transactionTemplate, pinTokenVerifier);
+                transactionTemplate, pinTokenVerifier, outboxRepository);
     }
 
     private ApproveRequest pinRequest() {
@@ -148,7 +150,7 @@ class ApproveSplitTransactionTest {
                 .intentId(INTENT_PUBLIC_ID.toString())
                 .status(PaymentStatus.APPROVED)
                 .build();
-        given(approveHelper.finalizeApproved(eq(INTENT_ID), eq(IDEM_SLOT_ID), anyList()))
+        given(approveHelper.finalizeApproved(eq(INTENT_ID), eq(IDEM_SLOT_ID), anyList(), anyLong(), anyLong(), anyLong()))
                 .willReturn(expectedRes);
 
         IdempotentResult<PaymentIntentDetailResponse> result =
@@ -157,7 +159,7 @@ class ApproveSplitTransactionTest {
         assertThat(result.getBody().getStatus()).isEqualTo(PaymentStatus.APPROVED);
         assertThat(result.isReplay()).isFalse();
 
-        then(approveHelper).should().finalizeApproved(eq(INTENT_ID), eq(IDEM_SLOT_ID), anyList());
+        then(approveHelper).should().finalizeApproved(eq(INTENT_ID), eq(IDEM_SLOT_ID), anyList(), anyLong(), anyLong(), anyLong());
         then(eventPublisher).should().publishEvent(any(Object.class));
     }
 
@@ -181,7 +183,7 @@ class ApproveSplitTransactionTest {
         // 핵심: finalizeDeclined 가 호출되었고, 이것은 REQUIRES_NEW 트랜잭션이므로
         // CustomException(RuntimeException) 이 던져져도 DECLINED 상태가 커밋된다.
         then(approveHelper).should().finalizeDeclined(INTENT_ID, IDEM_SLOT_ID);
-        then(approveHelper).should(never()).finalizeApproved(anyLong(), anyLong(), anyList());
+        then(approveHelper).should(never()).finalizeApproved(anyLong(), anyLong(), anyList(), anyLong(), anyLong(), anyLong());
     }
 
     // ═══════════════════════════════════════════════════
@@ -226,7 +228,7 @@ class ApproveSplitTransactionTest {
                 .isEqualTo(ErrorCode.SERVICE_TIMEOUT);
 
         // TX-B 는 호출되지 않는다 (IntentStatusUpdater 가 이미 UNCERTAIN 마킹)
-        then(approveHelper).should(never()).finalizeApproved(anyLong(), anyLong(), anyList());
+        then(approveHelper).should(never()).finalizeApproved(anyLong(), anyLong(), anyList(), anyLong(), anyLong(), anyLong());
         then(approveHelper).should(never()).finalizeDeclined(anyLong(), anyLong());
     }
 
@@ -249,7 +251,7 @@ class ApproveSplitTransactionTest {
 
         // TX-B 는 호출되지 않는다 → intent 는 PENDING 상태로 남음
         // 멱등 슬롯은 IN_PROGRESS → cleanupStalledInProgress(5분)가 정리
-        then(approveHelper).should(never()).finalizeApproved(anyLong(), anyLong(), anyList());
+        then(approveHelper).should(never()).finalizeApproved(anyLong(), anyLong(), anyList(), anyLong(), anyLong(), anyLong());
         then(approveHelper).should(never()).finalizeDeclined(anyLong(), anyLong());
     }
 
@@ -272,7 +274,7 @@ class ApproveSplitTransactionTest {
                 .intentId(INTENT_PUBLIC_ID.toString())
                 .status(PaymentStatus.APPROVED)
                 .build();
-        given(approveHelper.finalizeApproved(eq(INTENT_ID), eq(IDEM_SLOT_ID), anyList()))
+        given(approveHelper.finalizeApproved(eq(INTENT_ID), eq(IDEM_SLOT_ID), anyList(), anyLong(), anyLong(), anyLong()))
                 .willReturn(idempotentRes);
 
         IdempotentResult<PaymentIntentDetailResponse> result =
@@ -333,7 +335,7 @@ class ApproveSplitTransactionTest {
 
         // 레거시 경로에서는 approveHelper 를 전혀 사용하지 않는다
         then(approveHelper).should(never()).prepareApproval(any(), anyString(), anyLong(), any());
-        then(approveHelper).should(never()).finalizeApproved(anyLong(), anyLong(), anyList());
+        then(approveHelper).should(never()).finalizeApproved(anyLong(), anyLong(), anyList(), anyLong(), anyLong(), anyLong());
         then(approveHelper).should(never()).finalizeDeclined(anyLong(), anyLong());
     }
 
@@ -368,7 +370,7 @@ class ApproveSplitTransactionTest {
         // 만료 확정 후에는 PIN·자금·TX-B 로 진행하지 않는다
         then(customerClient).should(never()).verifyPin(anyLong(), anyString());
         then(fundsService).should(never()).capture(any(), anyList());
-        then(approveHelper).should(never()).finalizeApproved(anyLong(), anyLong(), anyList());
+        then(approveHelper).should(never()).finalizeApproved(anyLong(), anyLong(), anyList(), anyLong(), anyLong(), anyLong());
         then(approveHelper).should(never()).finalizeDeclined(anyLong(), anyLong());
     }
 
@@ -440,7 +442,7 @@ class ApproveSplitTransactionTest {
         given(customerClient.verifyPin(CUSTOMER_ID, PIN)).willReturn(true);
         given(fundsService.capture(any(), anyList()))
                 .willReturn(new FundsService.FundsResult(true, true, 999L, null, false));
-        given(approveHelper.finalizeApproved(eq(INTENT_ID), eq(IDEM_SLOT_ID), anyList()))
+        given(approveHelper.finalizeApproved(eq(INTENT_ID), eq(IDEM_SLOT_ID), anyList(), anyLong(), anyLong(), anyLong()))
                 .willThrow(new ObjectOptimisticLockingFailureException(PaymentIntent.class.getName(), INTENT_ID));
 
         assertThatThrownBy(() -> service.approve(INTENT_PUBLIC_ID, IDEM_KEY, CUSTOMER_ID, pinRequest()))

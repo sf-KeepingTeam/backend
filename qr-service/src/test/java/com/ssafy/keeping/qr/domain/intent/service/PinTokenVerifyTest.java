@@ -21,6 +21,7 @@ import com.ssafy.keeping.qr.domain.intent.dto.ApproveRequest;
 import com.ssafy.keeping.qr.domain.intent.dto.PaymentIntentDetailResponse;
 import com.ssafy.keeping.qr.domain.intent.dto.PaymentIntentItemView;
 import com.ssafy.keeping.qr.domain.intent.model.PaymentIntent;
+import com.ssafy.keeping.qr.domain.intent.outbox.PaymentOutboxRepository;
 import com.ssafy.keeping.qr.domain.intent.repository.PaymentIntentItemRepository;
 import com.ssafy.keeping.qr.domain.intent.repository.PaymentIntentRepository;
 import com.ssafy.keeping.qr.domain.qr.service.QrTokenService;
@@ -75,6 +76,7 @@ class PinTokenVerifyTest {
     @Mock private TransactionTemplate transactionTemplate;
     @Mock private StringRedisTemplate stringRedisTemplate;
     @Mock private ValueOperations<String, String> valueOperations;
+    @Mock private PaymentOutboxRepository outboxRepository;
 
     private PaymentIntentService service;
     private PinTokenVerifier pinTokenVerifier;
@@ -110,9 +112,9 @@ class PinTokenVerifyTest {
         service = new PaymentIntentService(
                 intentRepository, itemRepository, idempotencyService,
                 fundsService, qrTokenService, menuClient, storeClient,
-                customerClient, notificationClient, om, fixedClock,
+                customerClient, notificationClient, om, om, fixedClock,
                 eventPublisher, tuningProperties, approveHelper,
-                transactionTemplate, pinTokenVerifier);
+                transactionTemplate, pinTokenVerifier, outboxRepository);
     }
 
     // ── 헬퍼 ──────────────────────────────────────────────────────
@@ -242,7 +244,7 @@ class PinTokenVerifyTest {
                 .intentId(INTENT_PUBLIC_ID.toString())
                 .status(PaymentStatus.APPROVED)
                 .build();
-        given(approveHelper.finalizeApproved(eq(INTENT_ID), eq(IDEM_SLOT_ID), anyList()))
+        given(approveHelper.finalizeApproved(eq(INTENT_ID), eq(IDEM_SLOT_ID), anyList(), anyLong(), anyLong(), anyLong()))
                 .willReturn(expectedRes);
 
         IdempotentResult<PaymentIntentDetailResponse> result =
@@ -388,7 +390,7 @@ class PinTokenVerifyTest {
                 .intentId(INTENT_PUBLIC_ID.toString())
                 .status(PaymentStatus.APPROVED)
                 .build();
-        given(approveHelper.finalizeApproved(eq(INTENT_ID), eq(IDEM_SLOT_ID), anyList()))
+        given(approveHelper.finalizeApproved(eq(INTENT_ID), eq(IDEM_SLOT_ID), anyList(), anyLong(), anyLong(), anyLong()))
                 .willReturn(expectedRes);
 
         IdempotentResult<PaymentIntentDetailResponse> result =
@@ -446,7 +448,7 @@ class PinTokenVerifyTest {
                 .isInstanceOf(CustomException.class);
 
         then(approveHelper).should().finalizeDeclined(INTENT_ID, IDEM_SLOT_ID);
-        then(approveHelper).should(never()).finalizeApproved(anyLong(), anyLong(), anyList());
+        then(approveHelper).should(never()).finalizeApproved(anyLong(), anyLong(), anyList(), anyLong(), anyLong(), anyLong());
     }
 
     // ═══════════════════════════════════════════════════

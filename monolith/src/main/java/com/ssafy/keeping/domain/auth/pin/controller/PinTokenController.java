@@ -5,6 +5,7 @@ import com.ssafy.keeping.domain.auth.pin.dto.PinTokenResponse;
 import com.ssafy.keeping.domain.auth.pin.service.PinTokenService;
 import com.ssafy.keeping.domain.auth.security.principal.UserPrincipal;
 import com.ssafy.keeping.global.response.ApiResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -33,13 +34,13 @@ public class PinTokenController {
    * PIN 검증 후 단기 서명 토큰 발급.
    *
    * @param principal SecurityContext에서 추출한 인증 고객 정보
-   * @param request PIN + intentPublicId
+   * @param request PIN + intentPublicId (선택. 값이 있으면 UUID 형식이어야 한다)
    * @return 서명 토큰
    */
   @PostMapping("/verify-token")
   public ResponseEntity<ApiResponse<PinTokenResponse>> verifyAndIssueToken(
       @AuthenticationPrincipal UserPrincipal principal,
-      @RequestBody PinTokenRequest request) {
+      @RequestBody @Valid PinTokenRequest request) {
 
     PinTokenResponse response =
         pinTokenService.verifyAndIssueToken(

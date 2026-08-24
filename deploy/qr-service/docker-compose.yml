@@ -61,6 +61,17 @@ services:
       - PAYMENT_APPROVE_SPLIT_TRANSACTION=${PAYMENT_APPROVE_SPLIT_TRANSACTION:-false}
       - PAYMENT_PIN_TOKEN_ENABLED=${PAYMENT_PIN_TOKEN_ENABLED:-false}
 
+      # ── v3 Kafka 아웃박스 (#50~#53) ──────────────────────────────────────
+      #   기본값 = HTTP 경로. .env 를 비워도 기존 동작 유지.
+      #   Kafka 전환: PAYMENT_NOTIFICATION_TRANSPORT=kafka + PAYMENT_OUTBOX_ENABLED=true
+      - PAYMENT_NOTIFICATION_TRANSPORT=${PAYMENT_NOTIFICATION_TRANSPORT:-http}
+      - PAYMENT_OUTBOX_ENABLED=${PAYMENT_OUTBOX_ENABLED:-false}
+      - PAYMENT_OUTBOX_POLL_INTERVAL_MS=${PAYMENT_OUTBOX_POLL_INTERVAL_MS:-500}
+      - PAYMENT_OUTBOX_BATCH_SIZE=${PAYMENT_OUTBOX_BATCH_SIZE:-100}
+      - PAYMENT_OUTBOX_MAX_RETRY=${PAYMENT_OUTBOX_MAX_RETRY:-10}
+      - PAYMENT_OUTBOX_RETENTION_DAYS=${PAYMENT_OUTBOX_RETENTION_DAYS:-7}
+      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-}
+
       # ── v3 후속 — 세션 토큰 폐기 확인 ────────────────────────────────────
       #   ⚠️ monolith 와 qr 이 같은 Redis 를 볼 때만 동작한다.
       #      2-EC2 배포에서는 keeping-redis / qr-redis 로 별개일 가능성이 높다.

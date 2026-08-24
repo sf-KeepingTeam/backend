@@ -7,6 +7,7 @@ import com.ssafy.keeping.qr.domain.intent.event.PaymentApprovedEvent;
 import com.ssafy.keeping.qr.domain.intent.event.PaymentRequestedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
@@ -17,10 +18,14 @@ import org.springframework.transaction.event.TransactionalEventListener;
  *
  * <p>알림 실패가 결제에 영향을 주면 안 되므로, 리스너 전체를 try/catch 로 감싸고
  * 예외 시 경고 로그만 남긴다.
+ *
+ * <p>transport=kafka 이면 이 빈은 생성되지 않는다.
+ * 알림은 아웃박스 → Kafka 폴러(#52) → monolith 컨슈머(#53) 경로로 전달된다.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "payment.notification.transport", havingValue = "http", matchIfMissing = true)
 public class PaymentNotificationListener {
 
     private final NotificationClient notificationClient;
