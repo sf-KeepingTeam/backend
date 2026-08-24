@@ -38,7 +38,15 @@ services:
       # ── 리스너 ──────────────────────────────────────────────────────────
       #  다른 EC2(main/payment)에서 붙으므로 advertised 는 Private IP 여야 한다.
       #  localhost 나 컨테이너명으로 두면 원격 프로듀서가 붙지 못한다.
-      - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      #  ⚠️ CONTROLLER 는 0.0.0.0 으로 쓰면 안 된다.
+      #     Kafka 3.9 는 KRaft 에서 컨트롤러 리스너도 advertised 목록에 넣어 검증하는데,
+      #     advertised.listeners 에 CONTROLLER 항목이 없으면 listeners 값에서 유도한다.
+      #     0.0.0.0 을 명시하면 그대로 유도돼 기동 자체가 실패한다:
+      #       IllegalArgumentException: advertised.listeners cannot use the
+      #       nonroutable meta-address 0.0.0.0
+      #     controller.quorum.voters(1@localhost:9093) 와 같은 주소로 맞춘다.
+      #     자세한 경위: deploy/kafka/kafkaTroubleShooting.md §1
+      - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092,CONTROLLER://localhost:9093
       - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://${KAFKA_ADVERTISED_HOST}:9092
       - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
       - KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT
