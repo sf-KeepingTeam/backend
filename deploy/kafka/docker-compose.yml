@@ -1,12 +1,16 @@
 # =============================================================================
-#  Kafka — KRaft 단일 브로커 (keeping-allinone EC2)
+#  Kafka — KRaft 단일 브로커 (keeping-kafka 전용 EC2)
 # =============================================================================
 #  설계 근거: docs/v2/infra/06-Kafka.md
 #
-#  ★ 왜 keeping-allinone 인가
-#    구성 1(합침) 측정이 끝나 역할이 없다. 반면 keeping-loadgen 은
-#    개선 전후 재측정에 계속 필요하다 (result.md §7·§8 의 기준선을 만든 장비).
-#    loadgen 을 Kafka 로 전환하면 "무엇이 얼마나 좋아졌나"에 답할 수 없게 된다.
+#  ★ 왜 전용 EC2 한 대를 더 만드는가
+#    - keeping-loadgen 은 개선 전후 재측정에 계속 필요하다
+#      (result.md §7·§8 의 기준선을 만든 장비). 여기에 Kafka 를 얹으면
+#      "무엇이 얼마나 좋아졌나"에 답할 수 없게 된다.
+#    - keeping-allinone 은 구성 1(합침) 기준선이다. Kafka 를 얹으면
+#      2 vCPU 를 더 나눠 써야 해서 구성 1↔구성 2 비교가 오염된다.
+#    - main / payment 에 얹으면 측정 대상 자체를 오염시킨다.
+#    → 남는 선택지가 없다. 새 인스턴스가 가장 싸다.
 #
 #  ★ 왜 KRaft 인가
 #    ZooKeeper 가 필요 없다. 프로세스 하나로 끝나 t3.medium 에 적합하다.
@@ -57,6 +61,11 @@ services:
       # 힙 1GB. t3.medium(4GB)에서 나머지는 OS page cache 로 쓴다.
       # Kafka 는 힙보다 page cache 가 중요하다.
       - KAFKA_HEAP_OPTS=-Xms1g -Xmx1g
+
+      # ⚠️ apache/kafka 이미지 기본 log.dirs 는 /tmp/kraft-combined-logs 다.
+      #    이걸 지정하지 않으면 아래 volumes 마운트가 무시되고,
+      #    컨테이너를 재생성하는 순간 토픽·메시지가 통째로 사라진다.
+      - KAFKA_LOG_DIRS=/var/lib/kafka/data
     volumes:
       - kafka_data:/var/lib/kafka/data
     healthcheck:
