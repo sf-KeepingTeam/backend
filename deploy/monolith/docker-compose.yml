@@ -154,10 +154,15 @@ services:
     image: prom/mysqld-exporter:v0.15.1
     container_name: keeping-mysqld-exporter
     environment:
-      # v0.15.x 는 DATA_SOURCE_NAME 을 계속 지원한다(deprecated 지만 동작).
-      # 실패하면 --config.my-cnf 방식으로 바꿀 것.
-      - DATA_SOURCE_NAME=root:${MYSQL_ROOT_PASSWORD}@(mysql:3306)/
+      # v0.15 부터 DATA_SOURCE_NAME 이 제거됐다. 접속 정보는 my.cnf 로 준다.
+      #   MYSQLD_EXPORTER_PASSWORD 는 my.cnf 의 password 를 덮어쓴다(둘 중 하나면 된다).
+      - MYSQLD_EXPORTER_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    volumes:
+      # 배포 시 아래로 생성한다 (deploy/<서비스>/ 에서):
+      #   printf '[client]\nuser=root\nhost=mysql\nport=3306\n' > mysqld-exporter.cnf
+      - ./mysqld-exporter.cnf:/cfg/.my.cnf:ro
     command:
+      - --config.my-cnf=/cfg/.my.cnf
       - --collect.global_status
       - --collect.global_variables
       - --collect.info_schema.innodb_metrics
