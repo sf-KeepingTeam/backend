@@ -11,7 +11,7 @@
 #   setup="config1"  → keeping-allinone (합침)
 #   setup="config2"  → keeping-main + keeping-payment (나눔)
 #
-# envsubst 변수: ALLINONE_HOST, MONOLITH_HOST, QR_SERVICE_HOST (전부 Private IP)
+# envsubst 변수: ALLINONE_HOST, MONOLITH_HOST, QR_SERVICE_HOST, KAFKA_HOST (전부 Private IP)
 
 global:
   # 5초. 15초로는 hikaricp_connections_pending 같은 지표의 순간 피크를 놓친다.
@@ -45,6 +45,19 @@ scrape_configs:
     static_configs:
       - targets: ['${QR_SERVICE_HOST}:8081']   # 8082 아님
         labels: { setup: config2, service: qr-service }
+
+  # ── Kafka (keeping-allinone) ─────────────────────────────────────────────
+  #  kafka-exporter 는 JMX 가 아니라 Kafka 프로토콜로 붙는다.
+  #  가장 중요한 지표는 컨슈머 랙 — 이벤트 기반 전환에서 "밀리고 있나"의 답이다.
+  #    kafka_consumergroup_lag{consumergroup,topic,partition}
+  #    kafka_topic_partition_current_offset{topic,partition}
+  #    kafka_brokers
+  #
+  #  Kafka 를 아직 안 띄웠으면 target down 으로 표시될 뿐 해가 없다.
+  - job_name: 'kafka'
+    static_configs:
+      - targets: ['${KAFKA_HOST}:9308']
+        labels: { setup: kafka, service: kafka }
 
   - job_name: 'prometheus'
     static_configs:

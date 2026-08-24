@@ -11,8 +11,11 @@ set -a; . ./.env; set +a
 : "${ALLINONE_HOST:?ALLINONE_HOST 미설정}"
 : "${MONOLITH_HOST:?MONOLITH_HOST 미설정}"
 : "${QR_SERVICE_HOST:?QR_SERVICE_HOST 미설정}"
+# Kafka 는 선택 — 안 띄웠으면 target down 으로 뜰 뿐이다
+KAFKA_HOST="${KAFKA_HOST:-$ALLINONE_HOST}"
 
-envsubst '$ALLINONE_HOST $MONOLITH_HOST $QR_SERVICE_HOST' < prometheus.yml.template > prometheus.generated.yml
+export KAFKA_HOST
+envsubst '$ALLINONE_HOST $MONOLITH_HOST $QR_SERVICE_HOST $KAFKA_HOST' < prometheus.yml.template > prometheus.generated.yml
 echo "--- 생성된 타겟 ---"
 grep -A1 "targets:" prometheus.generated.yml
 
