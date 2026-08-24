@@ -11,8 +11,10 @@ set -a; . ./.env; set +a
 : "${ALLINONE_HOST:?ALLINONE_HOST 미설정}"
 : "${MONOLITH_HOST:?MONOLITH_HOST 미설정}"
 : "${QR_SERVICE_HOST:?QR_SERVICE_HOST 미설정}"
-# Kafka 는 선택 — 안 띄웠으면 target down 으로 뜰 뿐이다
-KAFKA_HOST="${KAFKA_HOST:-$ALLINONE_HOST}"
+# Kafka 는 선택 — 전용 EC2(keeping-kafka)의 Private IP 를 .env 에 넣는다.
+# 미설정이면 127.0.0.1 로 두어 target down 으로만 뜨게 한다.
+#   (빈 문자열로 두면 ':9308' 이 되어 Prometheus 설정 파싱이 통째로 실패한다)
+KAFKA_HOST="${KAFKA_HOST:-127.0.0.1}"
 
 export KAFKA_HOST
 envsubst '$ALLINONE_HOST $MONOLITH_HOST $QR_SERVICE_HOST $KAFKA_HOST' < prometheus.yml.template > prometheus.generated.yml

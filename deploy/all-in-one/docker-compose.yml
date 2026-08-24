@@ -58,6 +58,17 @@ services:
       #   → Q1("병목이 DB인가 톰캣 스레드인가 CPU인가")의 세 후보 중 하나를 못 본다.
       #   → SERVER_TOMCAT_THREADS_MAX 가 실제로 먹었는지 검증할 방법도 사라진다.
       # 양쪽 서비스·양쪽 구성에 동일하게 적용하므로 비교에는 편향을 주지 않는다.
+      # --- v3 세션 토큰 / PIN 속도제한 (구성 2와 키 이름·기본값 동일하게 유지) ---
+      # 기본값을 false 로 둔 이유: .env 를 비워두면 v2 기준선(F0 대응)이 그대로 재현된다.
+      # RATE_LIMIT 만 기본 true — 보안 기능이지 성능 기능이 아니다.
+      # (참고: 속도제한은 /customers/pin/verify-token 에만 걸린다. PIN_MODE=pin 경로는 영향 없음)
+      - PAYMENT_PIN_SESSION_TOKEN_ENABLED=${PAYMENT_PIN_SESSION_TOKEN_ENABLED:-false}
+      - PAYMENT_PIN_SESSION_TOKEN_TTL_SECONDS=${PAYMENT_PIN_SESSION_TOKEN_TTL_SECONDS:-180}
+      - PAYMENT_PIN_SESSION_TOKEN_MAX_USES=${PAYMENT_PIN_SESSION_TOKEN_MAX_USES:-5}
+      - PAYMENT_PIN_SESSION_TOKEN_MAX_AMOUNT_PER_USE=${PAYMENT_PIN_SESSION_TOKEN_MAX_AMOUNT_PER_USE:-100000}
+      - PAYMENT_PIN_SESSION_TOKEN_MAX_AMOUNT_TOTAL=${PAYMENT_PIN_SESSION_TOKEN_MAX_AMOUNT_TOTAL:-300000}
+      - PAYMENT_PIN_RATE_LIMIT_ENABLED=${PAYMENT_PIN_RATE_LIMIT_ENABLED:-true}
+      - PAYMENT_PIN_RATE_LIMIT_PER_MINUTE=${PAYMENT_PIN_RATE_LIMIT_PER_MINUTE:-10}
       - SERVER_TOMCAT_MBEANREGISTRY_ENABLED=true
     depends_on:
       mysql:
@@ -110,6 +121,14 @@ services:
       #   → Q1("병목이 DB인가 톰캣 스레드인가 CPU인가")의 세 후보 중 하나를 못 본다.
       #   → SERVER_TOMCAT_THREADS_MAX 가 실제로 먹었는지 검증할 방법도 사라진다.
       # 양쪽 서비스·양쪽 구성에 동일하게 적용하므로 비교에는 편향을 주지 않는다.
+      # --- v3 개선 플래그 ---
+      # ⚠️ 코드 기본값(application.yml)은 async=true / split-transaction=true 다.
+      #    여기서 명시하지 않으면 C0(구성1 기준선)가 F0 조건과 달라진다. 반드시 명시할 것.
+      #    .env 를 비워두면 전부 false = v2 기준선(F0 대응).
+      - PAYMENT_NOTIFICATION_ASYNC=${PAYMENT_NOTIFICATION_ASYNC:-false}
+      - PAYMENT_APPROVE_SPLIT_TRANSACTION=${PAYMENT_APPROVE_SPLIT_TRANSACTION:-false}
+      - PAYMENT_PIN_TOKEN_ENABLED=${PAYMENT_PIN_TOKEN_ENABLED:-false}
+      - PAYMENT_PIN_SESSION_TOKEN_REVOCATION_CHECK=${PAYMENT_PIN_SESSION_TOKEN_REVOCATION_CHECK:-false}
       - SERVER_TOMCAT_MBEANREGISTRY_ENABLED=true
     depends_on:
       mysql:
