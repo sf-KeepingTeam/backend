@@ -2,7 +2,7 @@
 -- 아웃박스 패턴: 결제 이벤트를 트랜잭션과 함께 기록하고, 폴러가 Kafka 로 발행한다.
 CREATE TABLE IF NOT EXISTS payment_outbox (
   id              BIGINT       NOT NULL AUTO_INCREMENT,
-  event_id        CHAR(36)     NOT NULL,
+  event_id        VARCHAR(36)  NOT NULL,
   aggregate_type  VARCHAR(50)  NOT NULL,
   aggregate_id    BIGINT       NOT NULL,
   event_type      VARCHAR(50)  NOT NULL,
@@ -10,8 +10,8 @@ CREATE TABLE IF NOT EXISTS payment_outbox (
   payload         TEXT         NOT NULL,
   status          VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
   retry_count     INT          NOT NULL DEFAULT 0,
-  created_at      DATETIME(3)  NOT NULL,
-  sent_at         DATETIME(3)  NULL,
+  created_at      DATETIME(6)  NOT NULL,
+  sent_at         DATETIME(6)  NULL,
   last_error      VARCHAR(500) NULL,
   PRIMARY KEY (id),
 

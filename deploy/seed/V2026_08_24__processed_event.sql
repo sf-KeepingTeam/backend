@@ -5,7 +5,7 @@
 -- 별도 테이블이 맞다.
 -- idx_processed_at 은 나중에 정리 배치를 붙일 때 사용한다.
 CREATE TABLE IF NOT EXISTS processed_event (
-  event_id     CHAR(36)    NOT NULL,
+  event_id     VARCHAR(36) NOT NULL,
   event_type   VARCHAR(50) NOT NULL,
   processed_at DATETIME(3) NOT NULL,
   PRIMARY KEY (event_id),

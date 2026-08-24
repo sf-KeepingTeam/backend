@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.kafka.annotation.EnableKafka;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
@@ -30,6 +31,16 @@ import org.springframework.util.backoff.FixedBackOff;
  */
 @Configuration
 @ConditionalOnProperty(name = "notification.kafka.consumer.enabled", havingValue = "true")
+// ⚠️ @EnableKafka 를 빼면 안 된다 (2026-08-24 인프라 수정 — result.md 결함 13)
+//   application.yml 이 KafkaAutoConfiguration 을 exclude 하고 있다.
+//   @KafkaListener 를 실제로 컨테이너로 만들어 주는 것은
+//   KafkaListenerAnnotationBeanPostProcessor 이고, 그것을 등록하는 주체가 @EnableKafka 다.
+//   보통은 KafkaAutoConfiguration 이 대신 넣어 주는데 그것을 제외해 놓았으므로
+//   여기서 직접 붙여야 한다.
+//   없으면 아래 빈들은 정상 생성되지만 리스너 컨테이너가 만들어지지 않아
+//   **에러도 로그도 없이** 컨슈머가 영원히 돌지 않는다. 메시지는 토픽에 쌓이기만 한다.
+//   이 클래스가 @ConditionalOnProperty 안에 있으므로 플래그가 꺼지면 @EnableKafka 도 적용되지 않는다.
+@EnableKafka
 public class NotificationKafkaConfig {
 
   @Value("${spring.kafka.bootstrap-servers}")
