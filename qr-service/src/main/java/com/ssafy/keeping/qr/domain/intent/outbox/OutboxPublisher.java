@@ -6,15 +6,12 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 import com.ssafy.keeping.qr.config.PaymentTuningProperties;
 
@@ -51,9 +48,6 @@ public class OutboxPublisher {
     private final PaymentTuningProperties tuning;
     private final OutboxMetrics metrics;
 
-    @PersistenceContext
-    private EntityManager entityManager;
-
     public OutboxPublisher(
             PaymentOutboxRepository repository,
             KafkaTemplate<String, String> kafkaTemplate,
@@ -69,10 +63,22 @@ public class OutboxPublisher {
 
     /**
      * fixedDelay 사용 — fixedRate 가 아니다. fixedRate 는 이전 실행이 안 끝나도 다음이 뜬다.
+     *
+     * <p>트랜잭션 경계: repository 의 각 @Modifying 메서드가 자체 트랜잭션을 열고 닫는다.
+     * Kafka send 는 트랜잭션 밖(네트워크 대기)에서 수행된다.
+     * 이전에 fetchPending/markSent/markRetry/markFailed 에 @Transactional 을 달았으나
+     * 같은 빈의 this.* 호출은 Spring AOP 프록시를 우회하므로 트랜잭션이 열리지 않았다 — Bug A.
      */
     @Scheduled(fixedDelayString = "${payment.outbox.poll-interval-ms:500}")
     public void publishPending() {
-        List<PendingEntry> entries = fetchPending();
+        int batchSize = tuning.getOutbox().getBatchSize();
+        List<PendingEntry> entries = repository
+                .findByStatusOrderByIdAsc(OutboxStatus.PENDING, PageRequest.of(0, batchSize))
+                .stream()
+                .map(o -> new PendingEntry(o.getId(), o.getEventId(), o.getPartitionKey(),
+                        o.getPayload(), o.getRetryCount()))
+                .toList();
+
         if (entries.isEmpty()) {
             metrics.updatePendingCount(repository.countByStatus(OutboxStatus.PENDING));
             return;
@@ -82,7 +88,7 @@ public class OutboxPublisher {
             try {
                 kafkaTemplate.send(TOPIC, entry.partitionKey, entry.payload)
                         .get(SEND_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-                markSent(entry.id);
+                repository.markSent(entry.id, LocalDateTime.now());
                 metrics.publishSuccess();
                 log.info("[OUTBOX] published id={} eventId={} key={}", entry.id, entry.eventId, entry.partitionKey);
             } catch (ExecutionException | TimeoutException | InterruptedException e) {
@@ -110,7 +116,7 @@ public class OutboxPublisher {
 
         int deleted;
         do {
-            deleted = deleteOldSentBatch(cutoff);
+            deleted = repository.deleteOldSentBatch(cutoff, CLEANUP_BATCH_SIZE);
             totalDeleted += deleted;
         } while (deleted >= CLEANUP_BATCH_SIZE);
 
@@ -120,27 +126,6 @@ public class OutboxPublisher {
     // ── 내부 메서드 ─────────────────────────────────────────────────────
 
     /**
-     * [짧은 TX] PENDING N건을 조회하고 스칼라로 복사한다. 엔티티는 트랜잭션 밖으로 나가지 않는다.
-     */
-    @Transactional(readOnly = true)
-    public List<PendingEntry> fetchPending() {
-        int batchSize = tuning.getOutbox().getBatchSize();
-        return repository.findByStatusOrderByIdAsc(OutboxStatus.PENDING, PageRequest.of(0, batchSize))
-                .stream()
-                .map(o -> new PendingEntry(o.getId(), o.getEventId(), o.getPartitionKey(),
-                        o.getPayload(), o.getRetryCount()))
-                .toList();
-    }
-
-    /**
-     * [짧은 TX] 발행 성공 — SENT 전이.
-     */
-    @Transactional
-    public void markSent(Long id) {
-        repository.findById(id).ifPresent(o -> o.markSent(LocalDateTime.now()));
-    }
-
-    /**
      * 발행 실패 시 retry 또는 FAILED 처리. 한 건의 실패가 폴러 전체를 죽이지 않는다.
      */
     private void handleFailure(PendingEntry entry, Exception e) {
@@ -148,44 +133,16 @@ public class OutboxPublisher {
         int maxRetry = tuning.getOutbox().getMaxRetry();
 
         if (entry.retryCount + 1 > maxRetry) {
-            markFailed(entry.id, error);
+            repository.markFailed(entry.id, error);
             metrics.failed();
             log.error("[OUTBOX] FAILED id={} eventId={} count={} error={}", entry.id, entry.eventId,
                     entry.retryCount + 1, error);
         } else {
-            markRetry(entry.id, error);
+            repository.incrementRetry(entry.id, error);
             metrics.publishFailure();
             log.warn("[OUTBOX] retry id={} eventId={} count={}/{} error={}", entry.id, entry.eventId,
                     entry.retryCount + 1, maxRetry, error);
         }
-    }
-
-    /**
-     * [짧은 TX] 재시도 카운트 증가.
-     */
-    @Transactional
-    public void markRetry(Long id, String error) {
-        repository.findById(id).ifPresent(o -> o.markRetry(error));
-    }
-
-    /**
-     * [짧은 TX] 최종 실패 전이.
-     */
-    @Transactional
-    public void markFailed(Long id, String error) {
-        repository.findById(id).ifPresent(o -> o.markFailed(error));
-    }
-
-    /**
-     * [짧은 TX] SENT + 기한 초과 행을 batchSize 건만 삭제한다. MySQL DELETE...LIMIT 사용.
-     */
-    @Transactional
-    public int deleteOldSentBatch(LocalDateTime cutoff) {
-        return entityManager.createNativeQuery(
-                        "DELETE FROM payment_outbox WHERE status = 'SENT' AND sent_at < :cutoff ORDER BY id LIMIT :batchSize")
-                .setParameter("cutoff", cutoff)
-                .setParameter("batchSize", CLEANUP_BATCH_SIZE)
-                .executeUpdate();
     }
 
     // ── 스칼라 DTO ──────────────────────────────────────────────────────
