@@ -44,6 +44,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Slice;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -701,11 +702,11 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
             .findByCustomerAndWalletType(customer, WalletType.INDIVIDUAL)
             .orElseThrow(() -> new CustomException(ErrorCode.WALLET_NOT_FOUND));
 
-    Page<WalletStoreBalance> page =
+    Slice<WalletStoreBalance> slice =
         balanceRepository.findPersonalWalletBalancesByCustomerId(customerId, pageable);
 
     List<WalletStoreBalanceDetailDto> storeBalances =
-        page.getContent().stream()
+        slice.getContent().stream()
             .map(
                 b ->
                     new WalletStoreBalanceDetailDto(
@@ -729,11 +730,11 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
 
     Wallet groupWallet = validGroupWallet(groupId);
 
-    Page<WalletStoreBalance> page =
+    Slice<WalletStoreBalance> slice =
         balanceRepository.findGroupWalletBalancesByGroupId(groupId, pageable);
 
     List<WalletStoreBalanceDetailDto> storeBalances =
-        page.getContent().stream()
+        slice.getContent().stream()
             .map(
                 b ->
                     new WalletStoreBalanceDetailDto(
@@ -788,17 +789,52 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
         store.getStoreId(), store.getStoreName(), balance.getBalance(), transactionDtos);
   }
 
-  /** 개인 지갑 + 모임 지갑들 통합 조회 */
+  /** 개인 지갑 + 모임 지갑들 통합 조회 — N+1 제거 버전 */
   @Transactional(readOnly = true)
   public BothWalletBalanceResponseDto getBothWalletBalance(Long customerId, Pageable pageable) {
-    // 1. 개인 지갑 조회
+    // 1. 개인 지갑 조회 (validCustomer 1회 포함)
     PersonalWalletBalanceResponseDto personalWallet =
         getPersonalWalletBalance(customerId, pageable);
 
-    // 2. 사용자가 속한 모든 그룹 조회
+    // 2. 소속 그룹 목록 (findMemberGroupsByCustomerId 가 이미 소속을 확인한 목록)
+    List<Long> groupIds = groupMemberRepository.findMemberGroupsByCustomerId(customerId);
+    if (groupIds.isEmpty()) {
+      return new BothWalletBalanceResponseDto(personalWallet, List.of());
+    }
+
+    // 3. 그룹 지갑 메타데이터 일괄 조회 (groupName, walletId) — IN 쿼리 1회
+    Map<Long, Wallet> walletByGroupId =
+        walletRepository.findGroupWalletsByGroupIdIn(groupIds).stream()
+            .collect(Collectors.toMap(w -> w.getGroup().getGroupId(), w -> w));
+
+    // 4. 그룹 잔액 일괄 조회 — IN 쿼리 1회 (groupIds 비어있지 않음)
+    Map<Long, List<WalletStoreBalance>> balancesByGroupId =
+        balanceRepository.findGroupWalletBalancesByGroupIds(groupIds).stream()
+            .collect(Collectors.groupingBy(wsb -> wsb.getWallet().getGroup().getGroupId()));
+
+    // 5. findMemberGroupsByCustomerId 반환 순서 유지하며 DTO 조립
     List<GroupWalletBalanceResponseDto> groupWallets =
-        groupMemberRepository.findMemberGroupsByCustomerId(customerId).stream()
-            .map(groupId -> getGroupWalletBalance(groupId, customerId, pageable))
+        groupIds.stream()
+            .filter(walletByGroupId::containsKey)
+            .map(
+                groupId -> {
+                  Wallet wallet = walletByGroupId.get(groupId);
+                  List<WalletStoreBalanceDetailDto> storeBalances =
+                      balancesByGroupId.getOrDefault(groupId, List.of()).stream()
+                          .map(
+                              b ->
+                                  new WalletStoreBalanceDetailDto(
+                                      b.getStore().getStoreId(),
+                                      b.getStore().getStoreName(),
+                                      b.getBalance(),
+                                      b.getUpdatedAt()))
+                          .toList();
+                  return new GroupWalletBalanceResponseDto(
+                      groupId,
+                      wallet.getWalletId(),
+                      wallet.getGroup().getGroupName(),
+                      storeBalances);
+                })
             .toList();
 
     return new BothWalletBalanceResponseDto(personalWallet, groupWallets);
