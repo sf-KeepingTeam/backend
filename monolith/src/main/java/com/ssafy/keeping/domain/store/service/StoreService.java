@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -137,7 +138,8 @@ public class StoreService {
     return storeRepository.findPublicAllApprovedStore(StoreStatus.ACTIVE);
   }
 
-  /** 가게 상세 조회 */
+  /** 가게 상세 조회 (TTL 300s 캐시됨 — CACHE_PROVIDER=caffeine|redis 시 활성) */
+  @Cacheable(value = "store", key = "#storeId")
   public StorePublicDto getStoreByStoreId(Long storeId) {
     return storeRepository
         .findPublicById(storeId, StoreStatus.ACTIVE)

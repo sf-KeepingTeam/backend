@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +36,8 @@ public class MenuService {
   private final ImageService imageService;
   private final QrServiceWebhookPublisher webhookPublisher;
 
+  /** 매장 메뉴 전체 조회 (TTL 300s 캐시됨 — store 존재 확인 + 메뉴 조회를 한 번에 캐싱) */
+  @Cacheable(value = "menus", key = "#storeId")
   public List<MenuResponseDto> getAllMenus(Long storeId) {
     storeRepository
         .findById(storeId)

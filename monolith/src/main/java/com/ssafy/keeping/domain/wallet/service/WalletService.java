@@ -33,6 +33,7 @@ import com.ssafy.keeping.domain.wallet.model.WalletStoreLot;
 import com.ssafy.keeping.domain.wallet.repository.WalletRepository;
 import com.ssafy.keeping.domain.wallet.repository.WalletStoreBalanceRepository;
 import com.ssafy.keeping.domain.wallet.repository.WalletStoreLotRepository;
+import com.ssafy.keeping.global.cache.RefDataCacheService;
 import com.ssafy.keeping.global.exception.CustomException;
 import com.ssafy.keeping.global.exception.constants.ErrorCode;
 import jakarta.validation.Valid;
@@ -63,6 +64,7 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
   private final NotificationService notificationService;
 
   private final IdempotencyService idempotencyService;
+  private final RefDataCacheService refDataCacheService;
 
   @Qualifier("canonicalObjectMapper")
   private final ObjectMapper canonicalObjectMapper;
@@ -124,7 +126,7 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
 
   // id만 넘어오는 호출용(검증을 여기서 직접 수행)
   public WalletResponseDto getGroupWallet(Long groupId, Long customerId) {
-    validCustomer(customerId);
+    refDataCacheService.findCustomerById(customerId); // 존재 확인 (캐시됨)
     Group group = validGroup(groupId);
     Wallet groupWallet = validGroupWallet(group.getGroupId());
 
@@ -696,11 +698,8 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
   @Transactional(readOnly = true)
   public PersonalWalletBalanceResponseDto getPersonalWalletBalance(
       Long customerId, Pageable pageable) {
-    Customer customer = validCustomer(customerId);
-    Wallet personalWallet =
-        walletRepository
-            .findByCustomerAndWalletType(customer, WalletType.INDIVIDUAL)
-            .orElseThrow(() -> new CustomException(ErrorCode.WALLET_NOT_FOUND));
+    refDataCacheService.findCustomerById(customerId); // 존재 확인 (캐시됨)
+    Wallet personalWallet = refDataCacheService.findWalletByCustomerIdAndType(customerId, WalletType.INDIVIDUAL);
 
     Slice<WalletStoreBalance> slice =
         balanceRepository.findPersonalWalletBalancesByCustomerId(customerId, pageable);
@@ -723,7 +722,7 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
   @Transactional(readOnly = true)
   public GroupWalletBalanceResponseDto getGroupWalletBalance(
       Long groupId, Long customerId, Pageable pageable) {
-    validCustomer(customerId);
+    refDataCacheService.findCustomerById(customerId); // 존재 확인 (캐시됨)
     Group group = validGroup(groupId);
     if (!groupMemberRepository.existsMember(groupId, customerId))
       throw new CustomException(ErrorCode.ONLY_GROUP_MEMBER);
@@ -752,17 +751,13 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
   @Transactional(readOnly = true)
   public WalletStoreDetailResponseDto getPersonalWalletStoreDetail(
       Long customerId, Long storeId, Pageable pageable) {
-    // 1. 고객 및 가게 검증
-    Customer customer = validCustomer(customerId);
+    // 1. 고객 및 가게 검증 (캐시됨)
+    refDataCacheService.findCustomerById(customerId);
 
     Store store = validStore(storeId);
-    ;
 
-    // 2. 개인지갑 조회
-    Wallet personalWallet =
-        walletRepository
-            .findByCustomerAndWalletType(customer, WalletType.INDIVIDUAL)
-            .orElseThrow(() -> new CustomException(ErrorCode.WALLET_NOT_FOUND));
+    // 2. 개인지갑 조회 (캐시됨)
+    Wallet personalWallet = refDataCacheService.findWalletByCustomerIdAndType(customerId, WalletType.INDIVIDUAL);
 
     // 3. 현재 잔액 조회
     WalletStoreBalance balance =
@@ -844,8 +839,8 @@ public class WalletService { // 충돌나는 것을 방지해 HS를 붙였으나
   @Transactional(readOnly = true)
   public WalletStoreDetailResponseDto getGroupWalletStoreDetail(
       Long groupId, Long customerId, Long storeId, Pageable pageable) {
-    // 1. 고객, 모임, 가게 검증
-    Customer customer = validCustomer(customerId);
+    // 1. 고객, 모임, 가게 검증 (customer 존재 확인은 캐시됨)
+    refDataCacheService.findCustomerById(customerId);
 
     Group group = validGroup(groupId);
 

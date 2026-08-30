@@ -16,6 +16,13 @@ public interface WalletRepository extends JpaRepository<Wallet, Long> {
   /** 고객과 지갑 타입으로 지갑 조회 */
   Optional<Wallet> findByCustomerAndWalletType(Customer customer, WalletType walletType);
 
+  /** 고객 ID와 지갑 타입으로 지갑 조회 (RefDataCacheService 캐싱용 — Customer 엔티티 불필요) */
+  @Query(
+      "SELECT w FROM Wallet w WHERE w.customer.customerId = :customerId AND w.walletType ="
+          + " :walletType")
+  Optional<Wallet> findByCustomerIdAndWalletType(
+      @Param("customerId") Long customerId, @Param("walletType") WalletType walletType);
+
   @Query("""
     select w
     from Wallet w

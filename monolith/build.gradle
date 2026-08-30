@@ -98,6 +98,9 @@ dependencies {
 	// Kafka (알림 컨슈머)
 	implementation 'org.springframework.kafka:spring-kafka'
 
+	// Caffeine (로컬 인메모리 캐시)
+	implementation 'com.github.ben-manes.caffeine:caffeine'
+
 	// ShedLock (분산 스케줄러 락)
 	implementation 'net.javacrumbs.shedlock:shedlock-spring:5.16.0'
 	implementation 'net.javacrumbs.shedlock:shedlock-provider-redis-spring:5.16.0'
