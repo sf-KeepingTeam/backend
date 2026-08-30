@@ -29,7 +29,7 @@ services:
       - "8080:8080"
     environment:
       - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-prod}
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/ssafy_fintech_db?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/ssafy_fintech_db?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true&useLocalSessionState=${USE_LOCAL_SESSION_STATE:-false}
       - SPRING_DATASOURCE_USERNAME=root
       - SPRING_DATASOURCE_PASSWORD=${MYSQL_ROOT_PASSWORD}
       - SPRING_DATA_REDIS_HOST=redis
@@ -41,6 +41,14 @@ services:
       - QR_SERVICE_URL=http://qr-service:8081
       - QR_WEBHOOK_ENABLED=${QR_WEBHOOK_ENABLED:-true}
       - LOADTEST_BACKDOOR_ENABLED=${LOADTEST_BACKDOOR_ENABLED:-false}
+
+      # ---------------------------------------------------------------------
+      # 정적 참조 데이터 캐싱 (2026-08-30 신설) — none | caffeine | redis
+      #   기본값 none = NoOpCacheManager = 지금까지의 모든 러닝과 동일 조건
+      #   ⚠️ 이 줄이 없으면 .env 를 고쳐도 컨테이너에 전달되지 않는다 (결함 12 패턴)
+      #   기동 로그의  [Cache] provider=...  로 실제 적용을 확인할 것
+      # ---------------------------------------------------------------------
+      - CACHE_PROVIDER=${CACHE_PROVIDER:-none}
       # --- 측정 통제변인 (구성 2와 동일하게 유지할 것) ---
       - SERVER_TOMCAT_THREADS_MAX=${SERVER_TOMCAT_THREADS_MAX:-200}
       - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=${SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE:-20}
@@ -99,7 +107,7 @@ services:
       - "8081:8081"
     environment:
       - MONOLITH_URL=http://monolith:8080
-      - DB_URL=jdbc:mysql://mysql:3306/payment_service?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true
+      - DB_URL=jdbc:mysql://mysql:3306/payment_service?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true&useLocalSessionState=${USE_LOCAL_SESSION_STATE:-false}
       - DB_USERNAME=root
       - DB_PASSWORD=${MYSQL_ROOT_PASSWORD}
       - REDIS_HOST=redis
