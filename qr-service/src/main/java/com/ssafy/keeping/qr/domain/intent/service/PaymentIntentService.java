@@ -25,6 +25,8 @@ import com.ssafy.keeping.qr.domain.intent.constant.PaymentStatus;
 import com.ssafy.keeping.qr.domain.intent.dto.*;
 import com.ssafy.keeping.qr.domain.intent.event.PaymentApprovedEvent;
 import com.ssafy.keeping.qr.domain.intent.event.PaymentRequestedEvent;
+import com.ssafy.keeping.qr.domain.intent.event.QrFlowIntentReadyEvent;
+import com.ssafy.keeping.qr.domain.qr.repository.QrFlowRedisStore;
 import com.ssafy.keeping.qr.domain.intent.model.PaymentIntent;
 import com.ssafy.keeping.qr.domain.intent.model.PaymentIntentItem;
 import com.ssafy.keeping.qr.domain.intent.outbox.OutboxStatus;
@@ -72,6 +74,7 @@ public class PaymentIntentService {
   private final TransactionTemplate transactionTemplate;
   private final PinTokenVerifier pinTokenVerifier;
   private final PaymentOutboxRepository outboxRepository;
+  private final QrFlowRedisStore qrFlowRedisStore;
 
   public PaymentIntentService(
       PaymentIntentRepository intentRepository,
@@ -91,7 +94,8 @@ public class PaymentIntentService {
       ApproveTransactionHelper approveHelper,
       TransactionTemplate transactionTemplate,
       PinTokenVerifier pinTokenVerifier,
-      PaymentOutboxRepository outboxRepository) {
+      PaymentOutboxRepository outboxRepository,
+      QrFlowRedisStore qrFlowRedisStore) {
     this.intentRepository = intentRepository;
     this.itemRepository = itemRepository;
     this.idempotencyService = idempotencyService;
@@ -110,6 +114,7 @@ public class PaymentIntentService {
     this.transactionTemplate = transactionTemplate;
     this.pinTokenVerifier = pinTokenVerifier;
     this.outboxRepository = outboxRepository;
+    this.qrFlowRedisStore = qrFlowRedisStore;
   }
 
   @PostConstruct
@@ -261,6 +266,25 @@ public class PaymentIntentService {
         items.stream().map(this::toItemView).collect(Collectors.toList());
 
     PaymentIntentDetailResponse res = PaymentIntentDetailResponse.from(intent, itemViews);
+
+    // QR 플로우 롱폴링 — initiate 커밋 후 AFTER_COMMIT 리스너가 Redis 저장 + waiter 해소
+    // 절대 건드리지 않는 것: TX 경계, 기존 PaymentRequestedEvent 블록
+    try {
+      String tokenIdForFlow = qrFlowRedisStore.getTokenIdForSession(sessionToken).orElse(null);
+      if (tokenIdForFlow != null) {
+        eventPublisher.publishEvent(new QrFlowIntentReadyEvent(
+            tokenIdForFlow,
+            intent.getPublicId(),
+            session.getCustomerId(),
+            intent.getStoreId(),
+            intent.getAmount(),
+            itemViews));
+        log.debug("[QR_FLOW] QrFlowIntentReadyEvent 발행 — tokenId={}", tokenIdForFlow);
+      }
+    } catch (Exception e) {
+      log.warn("[QR_FLOW] s2t 조회/이벤트 발행 실패 — sessionToken={} error={}",
+          sessionToken, e.getMessage());
+    }
 
     // 결제 요청 알림
     if ("kafka".equals(tuningProperties.getNotification().getTransport())) {

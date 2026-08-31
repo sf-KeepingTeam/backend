@@ -1,7 +1,10 @@
 package com.ssafy.keeping.qr.config;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.concurrent.Executor;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -45,13 +48,15 @@ public class AsyncConfig {
      * CallerRunsPolicy 를 쓰면 결제 스레드가 알림을 대신 처리하게 되어 개악이므로 금지.
      */
     @Bean("notificationExecutor")
-    public Executor notificationExecutor() {
+    public Executor notificationExecutor(MeterRegistry meterRegistry) {
+        Counter droppedCounter = meterRegistry.counter("notification_dropped_total");
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(notifCoreSize);
         executor.setMaxPoolSize(notifMaxSize);
         executor.setQueueCapacity(notifQueueCapacity);
         executor.setThreadNamePrefix("notif-");
         executor.setRejectedExecutionHandler((runnable, pool) -> {
+            droppedCounter.increment();
             log.warn("[NOTIFICATION_DROPPED] 알림 스레드풀 큐 포화 — 작업 버림. "
                     + "poolSize={} activeCount={} queueSize={}",
                     pool.getPoolSize(), pool.getActiveCount(),
@@ -63,5 +68,21 @@ public class AsyncConfig {
         log.info("[NOTIF_EXECUTOR] core={} max={} queue={}",
                 notifCoreSize, notifMaxSize, notifQueueCapacity);
         return executor;
+    }
+
+    /**
+     * 롱폴링 대기자 폴러 전용 스케줄러.
+     *
+     * <p>기존 {@code @Scheduled} 스레드(Spring 기본 1개, 복구 스케줄러 점유)와 분리.
+     * core 2 — 한 스레드가 느린 MGET 을 처리하는 동안 다른 스레드가 다음 사이클을 받는다.
+     */
+    @Bean("intentWaitScheduler")
+    public ScheduledExecutorService intentWaitScheduler() {
+        return Executors.newScheduledThreadPool(2,
+                r -> {
+                    Thread t = new Thread(r, "intent-wait-" + r.hashCode());
+                    t.setDaemon(true);
+                    return t;
+                });
     }
 }

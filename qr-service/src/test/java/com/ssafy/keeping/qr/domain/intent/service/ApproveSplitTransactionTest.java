@@ -27,6 +27,7 @@ import com.ssafy.keeping.qr.domain.intent.model.PaymentIntent;
 import com.ssafy.keeping.qr.domain.intent.outbox.PaymentOutboxRepository;
 import com.ssafy.keeping.qr.domain.intent.repository.PaymentIntentItemRepository;
 import com.ssafy.keeping.qr.domain.intent.repository.PaymentIntentRepository;
+import com.ssafy.keeping.qr.domain.qr.repository.QrFlowRedisStore;
 import com.ssafy.keeping.qr.domain.qr.service.QrTokenService;
 import java.lang.reflect.Field;
 import java.time.Clock;
@@ -99,7 +100,8 @@ class ApproveSplitTransactionTest {
                 fundsService, qrTokenService, menuClient, storeClient,
                 customerClient, notificationClient, om, om, fixedClock,
                 eventPublisher, tuningProperties, approveHelper,
-                transactionTemplate, pinTokenVerifier, outboxRepository);
+                transactionTemplate, pinTokenVerifier, outboxRepository,
+                mock(QrFlowRedisStore.class));
     }
 
     private ApproveRequest pinRequest() {

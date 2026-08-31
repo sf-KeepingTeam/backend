@@ -24,6 +24,7 @@ import com.ssafy.keeping.qr.domain.intent.model.PaymentIntent;
 import com.ssafy.keeping.qr.domain.intent.outbox.PaymentOutboxRepository;
 import com.ssafy.keeping.qr.domain.intent.repository.PaymentIntentItemRepository;
 import com.ssafy.keeping.qr.domain.intent.repository.PaymentIntentRepository;
+import com.ssafy.keeping.qr.domain.qr.repository.QrFlowRedisStore;
 import com.ssafy.keeping.qr.domain.qr.service.QrTokenService;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -114,7 +115,8 @@ class PinTokenVerifyTest {
                 fundsService, qrTokenService, menuClient, storeClient,
                 customerClient, notificationClient, om, om, fixedClock,
                 eventPublisher, tuningProperties, approveHelper,
-                transactionTemplate, pinTokenVerifier, outboxRepository);
+                transactionTemplate, pinTokenVerifier, outboxRepository,
+                mock(QrFlowRedisStore.class));
     }
 
     // ── 헬퍼 ──────────────────────────────────────────────────────

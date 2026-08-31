@@ -7,6 +7,7 @@ import com.ssafy.keeping.qr.domain.qr.dto.QrCreateResponse;
 import com.ssafy.keeping.qr.domain.qr.dto.QrScanResponse;
 import com.ssafy.keeping.qr.domain.qr.model.QrScanSession;
 import com.ssafy.keeping.qr.domain.qr.model.QrToken;
+import com.ssafy.keeping.qr.domain.qr.repository.QrFlowRedisStore;
 import com.ssafy.keeping.qr.domain.qr.repository.QrScanSessionRepository;
 import com.ssafy.keeping.qr.domain.qr.repository.QrTokenRedisRepository;
 import java.time.LocalDateTime;
@@ -23,6 +24,7 @@ public class QrTokenService {
 
   private final QrTokenRedisRepository qrTokenRepository;
   private final QrScanSessionRepository scanSessionRepository;
+  private final QrFlowRedisStore qrFlowRedisStore;
 
   private static final int TTL_SECONDS = 10;
   private static final int SESSION_TTL_SECONDS = 180; // 3분
@@ -119,6 +121,16 @@ public class QrTokenService {
         qrToken.getCustomerId(),
         qrToken.getWalletId(),
         SESSION_TTL_SECONDS);
+
+    // 롱폴링 지원: s2t 역참조 키 + active 마킹 저장
+    // 실패해도 결제 플로우 중단 금지 — 폴링 fallback 이 없어질 뿐
+    try {
+      qrFlowRedisStore.saveSessionToTokenMapping(sessionToken, tokenId);
+      qrFlowRedisStore.saveActiveToken(tokenId);
+      log.debug("[QR_FLOW] s2t + active 저장: tokenId={}", tokenId);
+    } catch (Exception e) {
+      log.warn("[QR_FLOW] 보조 키 저장 실패 — tokenId={} error={}", tokenId, e.getMessage());
+    }
 
     return QrScanResponse.from(session, SESSION_TTL_SECONDS);
   }

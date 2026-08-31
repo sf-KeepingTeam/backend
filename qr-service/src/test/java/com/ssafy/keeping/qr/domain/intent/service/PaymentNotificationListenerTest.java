@@ -23,6 +23,7 @@ import com.ssafy.keeping.qr.domain.intent.event.PaymentRequestedEvent;
 import com.ssafy.keeping.qr.domain.intent.model.PaymentIntent;
 import com.ssafy.keeping.qr.domain.intent.repository.PaymentIntentItemRepository;
 import com.ssafy.keeping.qr.domain.intent.repository.PaymentIntentRepository;
+import com.ssafy.keeping.qr.domain.qr.repository.QrFlowRedisStore;
 import com.ssafy.keeping.qr.domain.qr.service.QrTokenService;
 import java.lang.reflect.Field;
 import java.time.Clock;
@@ -154,7 +155,8 @@ class PaymentNotificationListenerTest {
                 mockIntentRepo, mockItemRepo, mockIdemService, mockFundsService,
                 mockQrService, mockMenuClient, mockStoreClient, mockCustomerClient,
                 mockNotifClient, mockMapper, mockPrimaryMapper, fixedClock, mockPublisher, syncProps,
-                mockApproveHelper, mockTxTemplate, mockPinTokenVerifier, mockOutboxRepo);
+                mockApproveHelper, mockTxTemplate, mockPinTokenVerifier, mockOutboxRepo,
+                mock(QrFlowRedisStore.class));
 
         // Intent 스텁
         UUID publicId = UUID.randomUUID();

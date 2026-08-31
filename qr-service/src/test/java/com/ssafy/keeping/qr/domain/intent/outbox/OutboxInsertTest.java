@@ -30,6 +30,7 @@ import com.ssafy.keeping.qr.domain.intent.service.ApproveTransactionHelper;
 import com.ssafy.keeping.qr.domain.intent.service.FundsService;
 import com.ssafy.keeping.qr.domain.intent.service.PaymentIntentService;
 import com.ssafy.keeping.qr.domain.intent.service.PinTokenVerifier;
+import com.ssafy.keeping.qr.domain.qr.repository.QrFlowRedisStore;
 import com.ssafy.keeping.qr.domain.qr.service.QrTokenService;
 import java.lang.reflect.Field;
 import java.time.Clock;
@@ -106,7 +107,8 @@ class OutboxInsertTest {
                 fundsService, qrTokenService, menuClient, storeClient,
                 customerClient, notificationClient, canonicalOm, primaryObjectMapper,
                 fixedClock, eventPublisher, tuningProperties, approveHelper,
-                transactionTemplate, pinTokenVerifier, outboxRepository);
+                transactionTemplate, pinTokenVerifier, outboxRepository,
+                mock(QrFlowRedisStore.class));
     }
 
     private ApproveRequest pinRequest() {
@@ -206,7 +208,8 @@ class OutboxInsertTest {
                 fundsService, qrTokenService, menuClient, storeClient,
                 customerClient, notificationClient, canonicalOm, primaryObjectMapper,
                 fixedClock, eventPublisher, tuningProperties, approveHelper,
-                transactionTemplate, pinTokenVerifier, outboxRepository);
+                transactionTemplate, pinTokenVerifier, outboxRepository,
+                mock(QrFlowRedisStore.class));
 
         setupNormalApprove();
 
@@ -243,7 +246,8 @@ class OutboxInsertTest {
                 fundsService, qrTokenService, menuClient, storeClient,
                 customerClient, notificationClient, canonicalOm, primaryObjectMapper,
                 fixedClock, eventPublisher, tuningProperties, approveHelper,
-                transactionTemplate, pinTokenVerifier, outboxRepository);
+                transactionTemplate, pinTokenVerifier, outboxRepository,
+                mock(QrFlowRedisStore.class));
 
         // transport=kafka 이므로 publishEvent 는 호출되지 않아야 한다.
         // initiate 의 전체 경로를 타려면 세션/메뉴 등이 필요하지만,
@@ -350,7 +354,8 @@ class OutboxInsertTest {
                 fundsService, qrTokenService, menuClient, storeClient,
                 customerClient, notificationClient, new ObjectMapper(), failingOm,
                 fixedClock, eventPublisher, tuningProperties, approveHelper,
-                transactionTemplate, pinTokenVerifier, outboxRepository);
+                transactionTemplate, pinTokenVerifier, outboxRepository,
+                mock(QrFlowRedisStore.class));
 
         // approveLegacy 경로를 사용한다 (split 경로의 setupNormalApprove 는 호출하지 않는다 —
         // split 스텁이 legacy 경로에서 사용되지 않아 UnnecessaryStubbingException 이 난다).
@@ -410,7 +415,8 @@ class OutboxInsertTest {
                 fundsService, qrTokenService, menuClient, storeClient,
                 customerClient, notificationClient, canonicalOm, primaryObjectMapper,
                 fixedClock, eventPublisher, tuningProperties, approveHelper,
-                transactionTemplate, pinTokenVerifier, outboxRepository);
+                transactionTemplate, pinTokenVerifier, outboxRepository,
+                mock(QrFlowRedisStore.class));
 
         // @PostConstruct 를 직접 호출해 검증
         assertThatThrownBy(svc::validateTransportOutboxConsistency)
@@ -452,7 +458,8 @@ class OutboxInsertTest {
                 fundsService, qrTokenService, menuClient, storeClient,
                 customerClient, notificationClient, canonicalOm, primaryObjectMapper,
                 fixedClock, eventPublisher, tuningProperties, approveHelper,
-                transactionTemplate, pinTokenVerifier, outboxRepository);
+                transactionTemplate, pinTokenVerifier, outboxRepository,
+                mock(QrFlowRedisStore.class));
 
         setupNormalApprove();
 
