@@ -6,7 +6,7 @@ services:
       - "8081:8081"
     environment:
       - MONOLITH_URL=http://${MONOLITH_HOST}:8080
-      - DB_URL=jdbc:mysql://mysql:3306/payment_service?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true
+      - DB_URL=jdbc:mysql://mysql:3306/payment_service?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true&useLocalSessionState=${USE_LOCAL_SESSION_STATE:-false}
       - DB_USERNAME=root
       - DB_PASSWORD=${MYSQL_ROOT_PASSWORD}
       - REDIS_HOST=redis
@@ -64,6 +64,13 @@ services:
       # ── v3 Kafka 아웃박스 (#50~#53) ──────────────────────────────────────
       #   기본값 = HTTP 경로. .env 를 비워도 기존 동작 유지.
       #   Kafka 전환: PAYMENT_NOTIFICATION_TRANSPORT=kafka + PAYMENT_OUTBOX_ENABLED=true
+      # ── 알림 스레드풀 통제변인 (2026-08-31) ──────────────────────────
+      #  기본값 2/4/64 = F6r 조건 그대로. F6-pool 러닝에서만 올린다.
+      #  ⚠️ 이 줄이 없으면 .env 를 고쳐도 컨테이너에 전달되지 않는다 (결함 12 패턴)
+      #  기동 로그의  [NOTIF_EXECUTOR] core=.. max=.. queue=..  로 실제 적용 확인
+      - NOTIFICATION_EXECUTOR_CORE_SIZE=${NOTIFICATION_EXECUTOR_CORE_SIZE:-2}
+      - NOTIFICATION_EXECUTOR_MAX_SIZE=${NOTIFICATION_EXECUTOR_MAX_SIZE:-4}
+      - NOTIFICATION_EXECUTOR_QUEUE_CAPACITY=${NOTIFICATION_EXECUTOR_QUEUE_CAPACITY:-64}
       - PAYMENT_NOTIFICATION_TRANSPORT=${PAYMENT_NOTIFICATION_TRANSPORT:-http}
       - PAYMENT_OUTBOX_ENABLED=${PAYMENT_OUTBOX_ENABLED:-false}
       - PAYMENT_OUTBOX_POLL_INTERVAL_MS=${PAYMENT_OUTBOX_POLL_INTERVAL_MS:-500}
