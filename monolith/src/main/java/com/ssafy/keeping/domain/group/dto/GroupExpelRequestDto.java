@@ -5,6 +5,5 @@ import lombok.Data;
 
 @Data
 public class GroupExpelRequestDto {
-    @NotNull
-    private Long targetCustomerId;
+  @NotNull private Long targetCustomerId;
 }

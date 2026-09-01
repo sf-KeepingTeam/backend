@@ -5,10 +5,7 @@ import lombok.Data;
 
 @Data
 public class PointShareRequestDto {
-    @NotNull
-    private Long individualWalletId;
-    @NotNull
-    private Long groupWalletId;
-    @NotNull
-    private Long shareAmount;
+  @NotNull private Long individualWalletId;
+  @NotNull private Long groupWalletId;
+  @NotNull private Long shareAmount;
 }

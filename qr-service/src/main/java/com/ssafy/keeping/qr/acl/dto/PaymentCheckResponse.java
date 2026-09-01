@@ -10,9 +10,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class PaymentCheckResponse {
-    private boolean exists;
-    private Long transactionId;
-    private Long amount;
-    private Long walletId;
-    private Long storeId;
+  private boolean exists;
+  private Long transactionId;
+  private Long amount;
+  private Long walletId;
+  private Long storeId;
 }

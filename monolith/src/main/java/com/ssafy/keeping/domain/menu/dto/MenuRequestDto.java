@@ -13,13 +13,12 @@ import org.springframework.web.multipart.MultipartFile;
 @AllArgsConstructor
 @NoArgsConstructor
 public class MenuRequestDto {
-    @NotBlank
-    private String menuName;
-    @NotNull
-    private Long categoryId;
-    @Min(1000)
-    private int price;
-    private String description;
-    @Nullable
-    private MultipartFile imgFile;
+  @NotBlank private String menuName;
+  @NotNull private Long categoryId;
+
+  @Min(1000)
+  private int price;
+
+  private String description;
+  @Nullable private MultipartFile imgFile;
 }

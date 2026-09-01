@@ -11,17 +11,17 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class CustomerResponse {
-    private Long customerId;
-    private String name;
-    private String email;
-    private String phone;
+  private Long customerId;
+  private String name;
+  private String email;
+  private String phone;
 
-    public static CustomerResponse from(Customer customer) {
-        return CustomerResponse.builder()
-                .customerId(customer.getCustomerId())
-                .name(customer.getName())
-                .email(customer.getEmail())
-                .phone(customer.getPhoneNumber())
-                .build();
-    }
+  public static CustomerResponse from(Customer customer) {
+    return CustomerResponse.builder()
+        .customerId(customer.getCustomerId())
+        .name(customer.getName())
+        .email(customer.getEmail())
+        .phone(customer.getPhoneNumber())
+        .build();
+  }
 }

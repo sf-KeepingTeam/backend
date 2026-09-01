@@ -7,6 +7,7 @@ import com.ssafy.keeping.domain.auth.security.filter.JwtAuthenticationFilter;
 import com.ssafy.keeping.domain.auth.security.filter.NoStoreAuthResponseFilter;
 import com.ssafy.keeping.domain.auth.security.filter.TestHeaderAuthenticationFilter;
 import com.ssafy.keeping.domain.auth.token.AccessTokenService;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -22,92 +23,92 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.util.List;
-
 @Profile("perf") // perf에서만 적용
 @Configuration
 @EnableWebSecurity
 @RequiredArgsConstructor
 public class SecurityConfigPerf {
 
-    private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
-    private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
+  private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
+  private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
 
-    @Value("${fe.base-url}")
-    private String feBaseUrl;
+  @Value("${fe.base-url}")
+  private String feBaseUrl;
 
-    // 기존 SecurityConfig의 ALLOW_URLS / TEMP_ALLOW_URLS 그대로 가져와도 됨
-    public static final String[] ALLOW_URLS = SecurityConfig.ALLOW_URLS;
-    public static final String[] TEMP_ALLOW_URLS = SecurityConfig.TEMP_ALLOW_URLS;
+  // 기존 SecurityConfig의 ALLOW_URLS / TEMP_ALLOW_URLS 그대로 가져와도 됨
+  public static final String[] ALLOW_URLS = SecurityConfig.ALLOW_URLS;
+  public static final String[] TEMP_ALLOW_URLS = SecurityConfig.TEMP_ALLOW_URLS;
 
-    @Bean
-    public JwtAuthenticationFilter jwtAuthenticationFilter(
-            AccessTokenService accessTokenService,
-            ObjectMapper objectMapper
-    ) {
-        return new JwtAuthenticationFilter(accessTokenService, objectMapper);
-    }
+  @Bean
+  public JwtAuthenticationFilter jwtAuthenticationFilter(
+      AccessTokenService accessTokenService, ObjectMapper objectMapper) {
+    return new JwtAuthenticationFilter(accessTokenService, objectMapper);
+  }
 
-    @Bean
-    public NoStoreAuthResponseFilter noStoreAuthResponseFilter() {
-        return new NoStoreAuthResponseFilter();
-    }
+  @Bean
+  public NoStoreAuthResponseFilter noStoreAuthResponseFilter() {
+    return new NoStoreAuthResponseFilter();
+  }
 
-    // perf에서만 사용할 “테스트 헤더 인증 필터”
-    @Bean
-    public TestHeaderAuthenticationFilter testHeaderAuthenticationFilter() {
-        return new TestHeaderAuthenticationFilter();
-    }
+  // perf에서만 사용할 “테스트 헤더 인증 필터”
+  @Bean
+  public TestHeaderAuthenticationFilter testHeaderAuthenticationFilter() {
+    return new TestHeaderAuthenticationFilter();
+  }
 
-    @Bean
-    CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of(feBaseUrl));
-        config.setAllowedMethods(List.of("GET","POST","PUT","DELETE","PATCH","OPTIONS"));
-        config.setAllowedHeaders(List.of("*"));
-        config.setAllowCredentials(true);
-        config.setMaxAge(3600L);
+  @Bean
+  CorsConfigurationSource corsConfigurationSource() {
+    CorsConfiguration config = new CorsConfiguration();
+    config.setAllowedOrigins(List.of(feBaseUrl));
+    config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
+    config.setAllowedHeaders(List.of("*"));
+    config.setAllowCredentials(true);
+    config.setMaxAge(3600L);
 
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", config);
-        return source;
-    }
+    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+    source.registerCorsConfiguration("/**", config);
+    return source;
+  }
 
-    @Bean
-    public SecurityFilterChain filterChain(
-            HttpSecurity http,
-            JwtAuthenticationFilter jwtFilter,
-            NoStoreAuthResponseFilter noStoreFilter,
-            TestHeaderAuthenticationFilter testHeaderFilter
-    ) throws Exception {
+  @Bean
+  public SecurityFilterChain filterChain(
+      HttpSecurity http,
+      JwtAuthenticationFilter jwtFilter,
+      NoStoreAuthResponseFilter noStoreFilter,
+      TestHeaderAuthenticationFilter testHeaderFilter)
+      throws Exception {
 
-        http
-                .csrf(csrf -> csrf.disable())
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .httpBasic(h -> h.disable())
-                .formLogin(f -> f.disable())
-                .exceptionHandling(eh -> eh
-                        .authenticationEntryPoint(jwtAuthenticationEntryPoint)
-                        .accessDeniedHandler(jwtAccessDeniedHandler)
-                )
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(ALLOW_URLS).permitAll()
-                        .requestMatchers(TEMP_ALLOW_URLS).permitAll()
+    http.csrf(csrf -> csrf.disable())
+        .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+        .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+        .httpBasic(h -> h.disable())
+        .formLogin(f -> f.disable())
+        .exceptionHandling(
+            eh ->
+                eh.authenticationEntryPoint(jwtAuthenticationEntryPoint)
+                    .accessDeniedHandler(jwtAccessDeniedHandler))
+        .authorizeHttpRequests(
+            auth ->
+                auth.requestMatchers(ALLOW_URLS)
+                    .permitAll()
+                    .requestMatchers(TEMP_ALLOW_URLS)
+                    .permitAll()
 
-                        // 역할 기반 인가 규칙도 그대로 유지
-                        .requestMatchers("/customers/**").hasRole("CUSTOMER")
-                        .requestMatchers("/owners/**").hasRole("OWNER")
+                    // 역할 기반 인가 규칙도 그대로 유지
+                    .requestMatchers("/customers/**")
+                    .hasRole("CUSTOMER")
+                    .requestMatchers("/owners/**")
+                    .hasRole("OWNER")
 
-                        // prepayment는 authenticated 유지 (테스트 헤더로 인증 통과)
-                        .requestMatchers("/api/v1/stores/*/prepayment/**").hasRole("CUSTOMER")
+                    // prepayment는 authenticated 유지 (테스트 헤더로 인증 통과)
+                    .requestMatchers("/api/v1/stores/*/prepayment/**")
+                    .hasRole("CUSTOMER")
+                    .anyRequest()
+                    .authenticated())
+        .addFilterBefore(noStoreFilter, SecurityContextHolderFilter.class)
+        .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
+        .addFilterBefore(testHeaderFilter, JwtAuthenticationFilter.class);
 
-                        .anyRequest().authenticated()
-                )
-                .addFilterBefore(noStoreFilter, SecurityContextHolderFilter.class)
-                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(testHeaderFilter, JwtAuthenticationFilter.class);
-
-        return http.build();
-    }
+    return http.build();
+  }
 }

@@ -11,9 +11,9 @@ import lombok.*;
 @AllArgsConstructor
 public class PaymentInitiateItemDto {
 
-    @NotNull(message = "menuId는 필수입니다")
-    private Long menuId;
+  @NotNull(message = "menuId는 필수입니다")
+  private Long menuId;
 
-    @Positive(message = "수량은 1 이상이어야 합니다")
-    private int quantity;
+  @Positive(message = "수량은 1 이상이어야 합니다")
+  private int quantity;
 }

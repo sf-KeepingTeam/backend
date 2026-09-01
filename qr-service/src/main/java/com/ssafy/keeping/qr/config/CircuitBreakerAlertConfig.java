@@ -14,26 +14,26 @@ import org.springframework.context.annotation.Configuration;
 @RequiredArgsConstructor
 public class CircuitBreakerAlertConfig {
 
-    private final CircuitBreakerRegistry circuitBreakerRegistry;
-    private final AlertService alertService;
+  private final CircuitBreakerRegistry circuitBreakerRegistry;
+  private final AlertService alertService;
 
-    @PostConstruct
-    public void registerEventListeners() {
-        circuitBreakerRegistry.getAllCircuitBreakers().forEach(this::registerListener);
-        circuitBreakerRegistry.getEventPublisher()
-                .onEntryAdded(event -> registerListener(event.getAddedEntry()));
-    }
+  @PostConstruct
+  public void registerEventListeners() {
+    circuitBreakerRegistry.getAllCircuitBreakers().forEach(this::registerListener);
+    circuitBreakerRegistry
+        .getEventPublisher()
+        .onEntryAdded(event -> registerListener(event.getAddedEntry()));
+  }
 
-    private void registerListener(CircuitBreaker circuitBreaker) {
-        circuitBreaker.getEventPublisher()
-                .onStateTransition(this::onStateTransition);
-    }
+  private void registerListener(CircuitBreaker circuitBreaker) {
+    circuitBreaker.getEventPublisher().onStateTransition(this::onStateTransition);
+  }
 
-    private void onStateTransition(CircuitBreakerOnStateTransitionEvent event) {
-        if (event.getStateTransition() == CircuitBreaker.StateTransition.CLOSED_TO_OPEN
-                || event.getStateTransition() == CircuitBreaker.StateTransition.HALF_OPEN_TO_OPEN) {
-            log.warn("서킷브레이커 OPEN: {}", event.getCircuitBreakerName());
-            alertService.notifyCircuitBreakerOpen(event.getCircuitBreakerName());
-        }
+  private void onStateTransition(CircuitBreakerOnStateTransitionEvent event) {
+    if (event.getStateTransition() == CircuitBreaker.StateTransition.CLOSED_TO_OPEN
+        || event.getStateTransition() == CircuitBreaker.StateTransition.HALF_OPEN_TO_OPEN) {
+      log.warn("서킷브레이커 OPEN: {}", event.getCircuitBreakerName());
+      alertService.notifyCircuitBreakerOpen(event.getCircuitBreakerName());
     }
+  }
 }

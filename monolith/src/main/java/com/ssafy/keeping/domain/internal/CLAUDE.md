@@ -21,18 +21,18 @@ internal/
 |---|---|
 | `InternalCustomerController` | 고객 조회, PIN 설정/검증 |
 | `InternalPaymentController` | 멱등키 기준 결제 존재 확인 (qr-service 복구용) |
-| `InternalWalletController` | 잔액 조회, **자금 캡처**, **환불**, **복원** — 모두 `Idempotency-Key` 필수 |
+| `InternalWalletController` | 잔액 조회, **자금 캡처**, **환불** — 캡처/환불은 `Idempotency-Key` 필수 |
 | `InternalStoreController` / `InternalMenuController` | 단건/배치 조회 + 캐시 워밍용 전체 조회(`/all`) |
 | `InternalNotificationController` | CUSTOMER/OWNER 타겟 알림 발송 |
 | `InternalPaymentService` | 멱등키로 기존 결제 레코드 조회 |
-| `InternalWalletService` | 캡처/환불/복원. `Idempotency-Key` 기반 원자적 처리 |
+| `InternalWalletService` | 캡처/환불. `Idempotency-Key` 기반 원자적 처리. 환불 시 lot 복원 포함 |
 | `QrServiceWebhookPublisher` | Store/Menu 변경 시 qr-service의 `/internal/cache/...`로 비동기 Push. Spring Retry(500ms/1s/2s, 3회). 실패 시 `@Recover`에서 로깅만 — fire-and-forget |
 | `InternalApiAuthException` | 토큰 불일치 시 401 |
 
 ## 도메인 규칙
 
 - **토큰 검증 공통 패턴**: 모든 컨트롤러 진입부에서 `validateInternalAuth(header)` — `application.yml`의 `internal.auth-token`과 비교.
-- **멱등성 보장 엔드포인트**: 자금 캡처, 환불, 포인트 복원. 바디 해시 + 스냅샷 기반 replay.
+- **멱등성 보장 엔드포인트**: 자금 캡처, 환불. 바디 해시 + 스냅샷 기반 replay.
 - **동시성**: 잔액/캡처 시 `WalletStoreBalanceRepository.lockByWalletIdAndStoreId` (PESSIMISTIC, 3초). 타임아웃 시 `PAYMENT_IN_PROGRESS`(409).
 - **거래 기록**: 캡처 = `TransactionType.USE`, 환불 = `REFUND`. `TransactionItem` 다건 저장.
 - **webhook 재시도 정책**: 지수 백오프(500ms → 1s → 2s), 3회, 실패 로깅만 — 캐시 불일치 가능 → 모니터링 필수.
@@ -53,8 +53,7 @@ internal/
 | POST | `/internal/customers/{customerId}/pin-verify` | X-Internal-Auth | PIN 검증 |
 | GET | `/internal/wallets/{walletId}/stores/{storeId}/balance` | X-Internal-Auth | 잔액 조회(락) |
 | POST | `/internal/wallets/{walletId}/stores/{storeId}/capture` | X-Internal-Auth | ○ 자금 캡처 |
-| POST | `/internal/wallets/{walletId}/stores/{storeId}/restore` | X-Internal-Auth | 캡처 복원 (**`/stores/{storeId}`** 포함) |
-| POST | `/internal/wallets/{walletId}/refund` | X-Internal-Auth | ○ 환불 |
+| POST | `/internal/wallets/{walletId}/refund` | X-Internal-Auth | ○ 환불 (lot 복원 포함, originalTransactionId 필수) |
 | GET | `/internal/payments/check?idempotencyKey=` | X-Internal-Auth | 결제 존재 여부 (qr-service 복구용) |
 | GET | `/internal/stores/{storeId}`, `/internal/stores/all` | X-Internal-Auth | 매장 단건/전량 |
 | GET/POST | `/internal/menus/{menuId}`, `/internal/menus/batch`, `/internal/menus/all` | X-Internal-Auth | 메뉴 |
@@ -74,4 +73,5 @@ Outbound (monolith → qr-service, `QrServiceWebhookPublisher`):
 3. 웹훅 실패는 로깅만 하고 삼킴 — 캐시 불일치 장기화 가능. Prometheus 알람 권장.
 4. Notification 요청 DTO의 필드 이름(`targetType`/`targetId`/`type`)과 내부 getter(`getReceiverType`/`getReceiverId`/`getNotificationType`)가 어긋남 — 스키마 변경 시 양쪽 동기화.
 5. 락 타임아웃 3초는 부하 시 자주 발생 — 클라이언트(qr-service)는 `Retry-After` 준수.
-6. `originalTransactionId` 검증은 선택적 — null 허용. 필요 시점엔 명시적으로 확인.
+6. `originalTransactionId`는 환불 시 **필수** — null이면 `REFUND_ORIGINAL_TX_REQUIRED` 예외. 환불 시 lot 복원(`WalletLedgerService.restoreLotsByOriginalTx`)과 합계 검증(`sumRestore == amount`)이 수행된다.
+7. `restore` 엔드포인트/메서드는 v2에서 제거됨 (PR #22). lot 근거 없이 balance만 올리는 원장 파괴 도구였으므로 `processRefund`로 대체.

@@ -1,0 +1,44 @@
+# 커넥션 풀 실환경 부하테스트용 인프라
+# qr-service(로컬 실행) 가 붙을 MySQL + Redis + WireMock(monolith 대역)
+#
+# 실행: docker compose -f docker-compose.loadtest.yml up -d
+# 종료: docker compose -f docker-compose.loadtest.yml down
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: keeping-loadtest-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: "1234"
+      MYSQL_DATABASE: payment_service
+    ports:
+      - "3306:3306"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p1234"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: keeping-loadtest-redis
+    ports:
+      - "6379:6379"
+
+  # monolith 대역 — qr-service의 /internal/* ACL 호출에 200 응답
+  # (mappings: ./wiremock/mappings/internal-*.json)
+  wiremock:
+    image: wiremock/wiremock:3.5.4
+    container_name: keeping-loadtest-wiremock
+    ports:
+      - "18080:8080"
+    volumes:
+      - ./wiremock:/home/wiremock
+    command:
+      - --port=8080
+      - --container-threads=100
+      - --async-response-enabled=true
+      - --async-response-threads=100
+      - --max-request-journal-entries=1000

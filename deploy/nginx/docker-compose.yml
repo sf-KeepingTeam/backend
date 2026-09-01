@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: keeping-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+    environment:
+      - MONOLITH_HOST=${MONOLITH_HOST}
+      - QR_SERVICE_HOST=${QR_SERVICE_HOST}
+      # ⚠️ 부하측정 시 반드시 상향. 기본값은 운영값(30r/s, 100r/s)이고,
+      #    k6가 단일 IP에서 나가므로 그대로 두면 Nginx가 부하를 앞에서 잘라낸다.
+      - RATE_LIMIT_QR=${RATE_LIMIT_QR:-30r/s}
+      - RATE_LIMIT_GENERAL=${RATE_LIMIT_GENERAL:-100r/s}
+      - RATE_BURST_QR=${RATE_BURST_QR:-50}
+      - RATE_BURST_GENERAL=${RATE_BURST_GENERAL:-200}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    command: >
+      /bin/sh -c "envsubst '$$MONOLITH_HOST $$QR_SERVICE_HOST $$RATE_LIMIT_QR $$RATE_LIMIT_GENERAL $$RATE_BURST_QR $$RATE_BURST_GENERAL' < /etc/nginx/templates/default.conf.template > /etc/nginx/nginx.conf && nginx -t && nginx -g 'daemon off;'"

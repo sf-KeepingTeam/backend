@@ -1,34 +1,29 @@
 package com.ssafy.keeping.domain.store.dto;
 
-
-import jakarta.validation.constraints.Pattern;
-import org.springframework.lang.Nullable;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import org.springframework.lang.Nullable;
 import org.springframework.web.multipart.MultipartFile;
 
 @Data
 @AllArgsConstructor
 public class StoreRequestDto {
 
-    @NotBlank
-    @Pattern(regexp = "^[0-9]{3}-[0-9]{2}-[0-9]{5}$", message = "사업자 등록번호 형식은 XXX-XX-XXXXX 여야 합니다.")
-    private String taxIdNumber;
+  @NotBlank
+  @Pattern(regexp = "^[0-9]{3}-[0-9]{2}-[0-9]{5}$", message = "사업자 등록번호 형식은 XXX-XX-XXXXX 여야 합니다.")
+  private String taxIdNumber;
 
-    @NotBlank
-    private String storeName;
+  @NotBlank private String storeName;
 
-    @NotBlank
-    private String address;
+  @NotBlank private String address;
 
-    private String phoneNumber;
+  private String phoneNumber;
 
-    @NotBlank
-    private String category;
+  @NotBlank private String category;
 
-    private String description;
+  private String description;
 
-    @Nullable
-    private MultipartFile imgFile;
+  @Nullable private MultipartFile imgFile;
 }

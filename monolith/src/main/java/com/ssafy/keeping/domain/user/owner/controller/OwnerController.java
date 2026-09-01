@@ -18,23 +18,25 @@ import org.springframework.web.multipart.MultipartFile;
 @RequiredArgsConstructor
 public class OwnerController {
 
-    private final OwnerService ownerService;
+  private final OwnerService ownerService;
 
-    @GetMapping("/me")
-    public ResponseEntity<ApiResponse<OwnerProfileResponse>> getMyProfile(@AuthenticationPrincipal UserPrincipal principal) {
-        Long ownerId = principal.id();
-        OwnerProfileResponse response = ownerService.getMyProfile(ownerId);
-        return ResponseEntity.status(HttpStatus.OK).body(ApiResponse.success("프로필 조회 성공", HttpStatus.OK.value(), response));
-    }
+  @GetMapping("/me")
+  public ResponseEntity<ApiResponse<OwnerProfileResponse>> getMyProfile(
+      @AuthenticationPrincipal UserPrincipal principal) {
+    Long ownerId = principal.id();
+    OwnerProfileResponse response = ownerService.getMyProfile(ownerId);
+    return ResponseEntity.status(HttpStatus.OK)
+        .body(ApiResponse.success("프로필 조회 성공", HttpStatus.OK.value(), response));
+  }
 
-    /**
-     * 프로필 이미지 수정
-     */
-    @PostMapping(value = "/{ownerId}/profile-image/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ApiResponse<ProfileUploadResponse>> uploadProfileImage(@PathVariable Long ownerId,
-                                                                                 @RequestParam("file") MultipartFile file) {
-        ProfileUploadResponse response = ownerService.uploadProfileImage(ownerId, file);
-        return ResponseEntity.status(HttpStatus.OK).body(ApiResponse.success("성공적 변경", HttpStatus.OK.value(), response));
-    }
-
+  /** 프로필 이미지 수정 */
+  @PostMapping(
+      value = "/{ownerId}/profile-image/upload",
+      consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  public ResponseEntity<ApiResponse<ProfileUploadResponse>> uploadProfileImage(
+      @PathVariable Long ownerId, @RequestParam("file") MultipartFile file) {
+    ProfileUploadResponse response = ownerService.uploadProfileImage(ownerId, file);
+    return ResponseEntity.status(HttpStatus.OK)
+        .body(ApiResponse.success("성공적 변경", HttpStatus.OK.value(), response));
+  }
 }

@@ -12,18 +12,18 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class PublicChargeBonusResponseDto {
 
-    private Long chargeAmount;
-    private Integer bonusPercentage;
-    private Long expectedTotalPoints;
+  private Long chargeAmount;
+  private Integer bonusPercentage;
+  private Long expectedTotalPoints;
 
-    public static PublicChargeBonusResponseDto from(ChargeBonus chargeBonus) {
-        Long bonusAmount = chargeBonus.getChargeAmount() * chargeBonus.getBonusPercentage() / 100;
-        Long totalPoints = chargeBonus.getChargeAmount() + bonusAmount;
+  public static PublicChargeBonusResponseDto from(ChargeBonus chargeBonus) {
+    Long bonusAmount = chargeBonus.getChargeAmount() * chargeBonus.getBonusPercentage() / 100;
+    Long totalPoints = chargeBonus.getChargeAmount() + bonusAmount;
 
-        return PublicChargeBonusResponseDto.builder()
-                .chargeAmount(chargeBonus.getChargeAmount())
-                .bonusPercentage(chargeBonus.getBonusPercentage())
-                .expectedTotalPoints(totalPoints)
-                .build();
-    }
+    return PublicChargeBonusResponseDto.builder()
+        .chargeAmount(chargeBonus.getChargeAmount())
+        .bonusPercentage(chargeBonus.getBonusPercentage())
+        .expectedTotalPoints(totalPoints)
+        .build();
+  }
 }

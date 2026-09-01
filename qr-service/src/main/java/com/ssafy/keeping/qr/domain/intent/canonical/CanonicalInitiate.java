@@ -1,9 +1,8 @@
 package com.ssafy.keeping.qr.domain.intent.canonical;
 
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
-import lombok.*;
-
 import java.util.List;
+import lombok.*;
 
 @Getter
 @Setter
@@ -13,18 +12,18 @@ import java.util.List;
 @JsonPropertyOrder({"storeId", "items"})
 public class CanonicalInitiate {
 
-    private Long storeId;
+  private Long storeId;
 
-    @JsonPropertyOrder({"menuId", "quantity"})
-    @Getter
-    @Setter
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @Builder
-    public static class Item {
-        private Long menuId;
-        private int quantity;
-    }
+  @JsonPropertyOrder({"menuId", "quantity"})
+  @Getter
+  @Setter
+  @NoArgsConstructor
+  @AllArgsConstructor
+  @Builder
+  public static class Item {
+    private Long menuId;
+    private int quantity;
+  }
 
-    private List<Item> items;
+  private List<Item> items;
 }

@@ -1,19 +1,45 @@
+# =============================================================================
+# Keeping 2-EC2 배포용 Nginx 템플릿
+# =============================================================================
+# gateway/nginx.conf(정상 라우팅 기준)를 envsubst 템플릿으로 옮긴 것.
+# 두 EC2(monolith / qr)가 동일한 이 파일을 사용한다 — 양쪽 다 상대 Private IP를 알고 있으므로
+# 어느 쪽 Nginx로 들어와도 올바른 서비스로 라우팅된다.
+#
+# envsubst로 치환되는 변수:
+#   MONOLITH_HOST        monolith EC2 Private IP
+#   QR_SERVICE_HOST      qr EC2 Private IP
+#   RATE_LIMIT_QR        QR/결제 rate limit (예: 30r/s). 부하측정 시 반드시 상향 — 아래 주석 참조
+#   RATE_LIMIT_GENERAL   일반 API rate limit (예: 100r/s)
+#   RATE_BURST_QR        QR/결제 burst
+#   RATE_BURST_GENERAL   일반 API burst
+#
+# ⚠️ 부하측정 시 rate limit 경고 -----------------------------------------------
+# limit_req_zone의 키가 $binary_remote_addr(클라이언트 IP)다.
+# k6는 loadgen EC2 1대에서 나가므로 모든 VU가 IP 하나를 공유한다
+# → 전체 부하가 단일 버킷에 걸린다. 운영값(30r/s, 100r/s)을 그대로 두면
+#   Nginx가 초과분을 503으로 쳐내고 monolith는 그 부하를 받지도 못한다.
+#   = "monolith가 포화되지 않았다"는 가짜 결론이 나온다.
+# → 측정 러닝에서는 RATE_LIMIT_* 를 100000r/s 수준으로 올린다.
+#   그리고 그 사실을 반드시 산출물(result.md)에 기록한다.
+# -----------------------------------------------------------------------------
+
 worker_processes auto;
 
 events {
-    worker_connections 1024;
+    worker_connections 4096;
 }
 
 http {
     include       /etc/nginx/mime.types;
     default_type  application/octet-stream;
 
-    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
-                    '$status $body_bytes_sent "$http_referer" '
-                    '"$http_user_agent" "$http_x_forwarded_for"';
+    log_format main '$remote_addr - [$time_local] "$request" '
+                    '$status $body_bytes_sent '
+                    'rt=$request_time urt=$upstream_response_time '
+                    'upstream: $upstream_addr';
 
     access_log /var/log/nginx/access.log main;
-    error_log /var/log/nginx/error.log;
+    error_log  /var/log/nginx/error.log warn;
 
     sendfile on;
     tcp_nopush on;
@@ -21,77 +47,226 @@ http {
     keepalive_timeout 65;
     types_hash_max_size 2048;
 
-    # Gzip 압축
     gzip on;
     gzip_vary on;
     gzip_proxied any;
     gzip_comp_level 6;
-    gzip_types text/plain text/css text/xml application/json application/javascript application/rss+xml application/atom+xml image/svg+xml;
+    gzip_types text/plain text/css text/xml application/json application/javascript;
 
-    # Upstream 설정
+    # ========================================
+    # Rate Limiting (측정 시 상향 — 위 경고 참조)
+    # ========================================
+    limit_req_zone $binary_remote_addr zone=qr_api:10m rate=${RATE_LIMIT_QR};
+    limit_req_zone $binary_remote_addr zone=general_api:10m rate=${RATE_LIMIT_GENERAL};
+
+    # 429 대신 503을 쓰지 않도록 명시 (측정 로그에서 rate limit 유래 실패를 구분하기 위함)
+    limit_req_status 429;
+
+    # ========================================
+    # Proxy 타임아웃 기본값
+    # Nginx proxy_read_timeout > Spring 처리 > DB 락(3s)
+    # ========================================
+    proxy_connect_timeout 5s;
+    proxy_send_timeout 30s;
+    proxy_read_timeout 30s;
+
     upstream monolith {
         server ${MONOLITH_HOST}:8080;
-        keepalive 32;
+        keepalive 64;
     }
 
     upstream qr-service {
-        server ${QR_SERVICE_HOST}:8082;
-        keepalive 32;
+        server ${QR_SERVICE_HOST}:8081;   # qr-service는 8081에서 listen (8082는 오기였음)
+        keepalive 64;
     }
 
     server {
         listen 80;
         server_name _;
 
-        # 클라이언트 최대 요청 크기
         client_max_body_size 10M;
 
-        # 헬스체크 엔드포인트
+        # ========================================
+        # 내부 API 외부 접근 차단
+        # EC2 간 직접 포트(8080/8081) 통신은 보안그룹이 막고,
+        # 포트 80으로 들어오는 외부 트래픽은 여기서 막는다.
+        # ========================================
+        location /internal {
+            default_type application/json;
+            return 403 '{"error": "Forbidden", "message": "Internal API access denied"}';
+        }
+
+        # Nginx 자체 헬스체크
         location /health {
             access_log off;
             return 200 'OK';
             add_header Content-Type text/plain;
         }
 
-        # QR Service 라우팅 (결제 관련)
-        location /api/qr/ {
-            proxy_pass http://qr-service/api/qr/;
-            proxy_http_version 1.1;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_set_header Connection "";
-            proxy_connect_timeout 10s;
-            proxy_send_timeout 30s;
-            proxy_read_timeout 30s;
-        }
-
-        location /api/payments/ {
-            proxy_pass http://qr-service/api/payments/;
-            proxy_http_version 1.1;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_set_header Connection "";
-            proxy_connect_timeout 10s;
-            proxy_send_timeout 30s;
-            proxy_read_timeout 30s;
-        }
-
-        # Monolith 라우팅 (그 외 모든 API)
-        location / {
+        # ========================================
+        # 인증 불필요 경로 → monolith
+        # ========================================
+        location /auth/refresh {
             proxy_pass http://monolith;
             proxy_http_version 1.1;
+            proxy_set_header Connection "";
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Cookie $http_cookie;
+        }
+
+        location /auth/logout {
+            proxy_pass http://monolith;
+            proxy_http_version 1.1;
             proxy_set_header Connection "";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Cookie $http_cookie;
+        }
+
+        location /oauth2 {
+            proxy_pass http://monolith;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        location /login/oauth2 {
+            proxy_pass http://monolith;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # LoadTest API (부하테스트용)
+        location /api/loadtest {
+            proxy_pass http://monolith;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-LoadTest-Auth $http_x_loadtest_auth;
+        }
+
+        # ========================================
+        # QR Service 라우팅
+        # ⚠️ 아래 4개 location이 없으면 k6 결제 플로우가 monolith로 가서 404가 난다.
+        #    (구 템플릿에 /cpqr, /payments 가 누락되어 있었음)
+        # ========================================
+
+        # QR 토큰 생성/조회/스캔
+        location /api/qr {
+            limit_req zone=qr_api burst=${RATE_BURST_QR} nodelay;
+
+            proxy_pass http://qr-service;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Authorization $http_authorization;
+
             proxy_connect_timeout 10s;
-            proxy_send_timeout 30s;
             proxy_read_timeout 30s;
+        }
+
+        # CPQR 결제 의도 생성 (점주)
+        location ~ ^/cpqr/([^/]+)/initiate$ {
+            limit_req zone=qr_api burst=${RATE_BURST_QR} nodelay;
+
+            proxy_pass http://qr-service;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Authorization $http_authorization;
+            proxy_set_header Idempotency-Key $http_idempotency_key;
+
+            proxy_connect_timeout 10s;
+            proxy_read_timeout 30s;
+        }
+
+        # 결제 승인 (고객)
+        location ~ ^/payments/([^/]+)/approve$ {
+            limit_req zone=qr_api burst=${RATE_BURST_QR} nodelay;
+
+            proxy_pass http://qr-service;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Authorization $http_authorization;
+            proxy_set_header Idempotency-Key $http_idempotency_key;
+
+            proxy_connect_timeout 10s;
+            proxy_read_timeout 30s;
+        }
+
+        # 결제 의도 상세 조회 / 취소
+        location ~ ^/api/payments/intent/([^/]+) {
+            limit_req zone=qr_api burst=${RATE_BURST_QR} nodelay;
+
+            proxy_pass http://qr-service;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Authorization $http_authorization;
+
+            proxy_connect_timeout 10s;
+            proxy_read_timeout 30s;
+        }
+
+        # ========================================
+        # Monolith API
+        # ========================================
+        location /api {
+            limit_req zone=general_api burst=${RATE_BURST_GENERAL} nodelay;
+
+            proxy_pass http://monolith;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Authorization $http_authorization;
+        }
+
+        # ========================================
+        # 그 외 전부 monolith
+        # (k6 배경부하의 /wallets, /stores 도 여기로 온다)
+        # ========================================
+        location / {
+            limit_req zone=general_api burst=${RATE_BURST_GENERAL} nodelay;
+
+            proxy_pass http://monolith;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Authorization $http_authorization;
         }
     }
 }

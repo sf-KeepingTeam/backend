@@ -6,12 +6,9 @@ import com.ssafy.keeping.domain.wallet.model.Wallet;
 
 public final class WalletFixtures {
 
-    private WalletFixtures() {}
+  private WalletFixtures() {}
 
-    public static Wallet individualWallet(Customer customer) {
-        return Wallet.builder()
-                .customer(customer)
-                .walletType(WalletType.INDIVIDUAL)
-                .build();
-    }
+  public static Wallet individualWallet(Customer customer) {
+    return Wallet.builder().customer(customer).walletType(WalletType.INDIVIDUAL).build();
+  }
 }

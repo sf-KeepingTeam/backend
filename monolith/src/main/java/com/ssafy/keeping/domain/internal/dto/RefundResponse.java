@@ -10,22 +10,19 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class RefundResponse {
-    private boolean success;
-    private Long refundTransactionId;
-    private String message;
+  private boolean success;
+  private Long refundTransactionId;
+  private String message;
 
-    public static RefundResponse ok(Long refundTransactionId) {
-        return RefundResponse.builder()
-                .success(true)
-                .refundTransactionId(refundTransactionId)
-                .message("환불 완료")
-                .build();
-    }
+  public static RefundResponse ok(Long refundTransactionId) {
+    return RefundResponse.builder()
+        .success(true)
+        .refundTransactionId(refundTransactionId)
+        .message("환불 완료")
+        .build();
+  }
 
-    public static RefundResponse failed(String message) {
-        return RefundResponse.builder()
-                .success(false)
-                .message(message)
-                .build();
-    }
+  public static RefundResponse failed(String message) {
+    return RefundResponse.builder().success(false).message(message).build();
+  }
 }

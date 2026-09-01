@@ -8,11 +8,11 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 public class MenuResponse {
-    private Long menuId;
-    private Long storeId;
-    private String menuName;
-    private Integer price;
-    private boolean active;
-    private boolean soldOut;
-    private long version;
+  private Long menuId;
+  private Long storeId;
+  private String menuName;
+  private Integer price;
+  private boolean active;
+  private boolean soldOut;
+  private long version;
 }

@@ -9,9 +9,9 @@ import lombok.*;
 @AllArgsConstructor
 public class PaymentIntentItemView {
 
-    private Long menuId;
-    private String name;
-    private Long unitPrice;
-    private int quantity;
-    private Long lineTotal;
+  private Long menuId;
+  private String name;
+  private Long unitPrice;
+  private int quantity;
+  private Long lineTotal;
 }

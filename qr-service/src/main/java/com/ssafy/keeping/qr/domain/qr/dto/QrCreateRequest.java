@@ -12,8 +12,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class QrCreateRequest {
 
-    @NotNull(message = "walletId는 필수입니다")
-    private Long walletId;
+  @NotNull(message = "walletId는 필수입니다")
+  private Long walletId;
 
-    private Long bindStoreId;
+  private Long bindStoreId;
 }

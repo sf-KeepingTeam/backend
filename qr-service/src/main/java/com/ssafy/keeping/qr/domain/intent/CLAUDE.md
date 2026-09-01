@@ -49,6 +49,13 @@ PaymentIntentService.approve
 
 `PENDING → APPROVED / DECLINED / CANCELED / EXPIRED / UNCERTAIN → ROLLED_BACK`.  잘못된 전이는 `PAYMENT_INTENT_STATUS_CONFLICT` 409.
 
+**🔴 실패 전이(DECLINED/EXPIRED)는 같은 트랜잭션에서 전이 + throw 하지 마라.**
+전이까지 함께 롤백돼 intent 가 PENDING 으로 남는다(#45 `markDeclined`, #48 `markExpired` 로 2회 재발).
+반드시 `ApproveTransactionHelper.finalizeDeclined` / `finalizeExpired`
+(`@Transactional(REQUIRES_NEW)`) 로 전이를 별도 커밋하고, **예외는 커밋 뒤 호출자가 던진다.**
+`prepareApproval` 은 같은 빈이라 self-invocation 으로 프록시를 못 타므로
+`ApprovePhaseAResult.expired` 플래그만 세워 커밋하고 `approveSplit` 이 처리한다.
+
 ### TTL
 
 - Intent: 3분 (PENDING 외 approve 불가 → 3분 초과 시 `PAYMENT_INTENT_EXPIRED` 410).
@@ -83,4 +90,4 @@ PaymentIntentService.approve
 - `domain/idempotency/CLAUDE.md` — 멱등성 키 처리 철학.
 - `domain/qr/CLAUDE.md` — initiate 입력(세션 토큰) 발급자.
 - `acl/CLAUDE.md` — `WalletClient`/`CustomerClient`/`StoreClient`/`MenuClient` 타임아웃·Circuit Breaker.
-- monolith `domain/wallet/CLAUDE.md` — `capture`/`restore`/`refund` 엔드포인트 상대쪽.
+- monolith `domain/wallet/CLAUDE.md` — `capture`/`refund` 엔드포인트 상대쪽.

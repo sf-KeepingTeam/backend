@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/internal/stores/[0-9]+"
+  },
+  "response": {
+    "status": 200,
+    "fixedDelayMilliseconds": 50,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "storeId": 1,
+      "storeName": "loadtest-store",
+      "ownerId": 100,
+      "taxIdNumber": "000-00-00000",
+      "address": "loadtest",
+      "active": true
+    }
+  }
+}

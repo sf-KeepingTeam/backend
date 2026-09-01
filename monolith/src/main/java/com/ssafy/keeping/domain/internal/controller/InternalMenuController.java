@@ -6,80 +6,68 @@ import com.ssafy.keeping.domain.internal.service.InternalAuthValidator;
 import com.ssafy.keeping.domain.menu.model.Menu;
 import com.ssafy.keeping.domain.menu.repository.MenuRepository;
 import com.ssafy.keeping.global.constants.HttpHeaderConstants;
+import java.util.List;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-import java.util.stream.Collectors;
-
-/**
- * Internal API - 마이크로서비스 간 통신용
- */
+/** Internal API - 마이크로서비스 간 통신용 */
 @Slf4j
 @RestController
 @RequestMapping("/internal/menus")
 @RequiredArgsConstructor
 public class InternalMenuController {
 
-    private final MenuRepository menuRepository;
-    private final InternalAuthValidator internalAuthValidator;
+  private final MenuRepository menuRepository;
+  private final InternalAuthValidator internalAuthValidator;
 
-    /**
-     * 메뉴 일괄 조회
-     */
-    @PostMapping("/batch")
-    public ResponseEntity<List<MenuResponse>> getMenusBatch(
-            @RequestBody BatchMenuRequest request,
-            @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
-    ) {
-        internalAuthValidator.validate(authToken);
+  /** 메뉴 일괄 조회 */
+  @PostMapping("/batch")
+  public ResponseEntity<List<MenuResponse>> getMenusBatch(
+      @RequestBody BatchMenuRequest request,
+      @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false)
+          String authToken) {
+    internalAuthValidator.validate(authToken);
 
-        List<Menu> menus = menuRepository.findAllById(request.getMenuIds());
+    List<Menu> menus = menuRepository.findAllById(request.getMenuIds());
 
-        List<MenuResponse> response = menus.stream()
-                .map(MenuResponse::from)
-                .collect(Collectors.toList());
+    List<MenuResponse> response =
+        menus.stream().map(MenuResponse::from).collect(Collectors.toList());
 
-        return ResponseEntity.ok(response);
+    return ResponseEntity.ok(response);
+  }
+
+  /** 단일 메뉴 조회 */
+  @GetMapping("/{menuId}")
+  public ResponseEntity<MenuResponse> getMenu(
+      @PathVariable Long menuId,
+      @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false)
+          String authToken) {
+    internalAuthValidator.validate(authToken);
+
+    Menu menu = menuRepository.findById(menuId).orElse(null);
+
+    if (menu == null) {
+      return ResponseEntity.notFound().build();
     }
 
-    /**
-     * 단일 메뉴 조회
-     */
-    @GetMapping("/{menuId}")
-    public ResponseEntity<MenuResponse> getMenu(
-            @PathVariable Long menuId,
-            @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
-    ) {
-        internalAuthValidator.validate(authToken);
+    return ResponseEntity.ok(MenuResponse.from(menu));
+  }
 
-        Menu menu = menuRepository.findById(menuId)
-                .orElse(null);
+  /** 전체 활성 메뉴 조회 (Cache Warming용) */
+  @GetMapping("/all")
+  public ResponseEntity<List<MenuResponse>> getAllMenus(
+      @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false)
+          String authToken) {
+    internalAuthValidator.validate(authToken);
 
-        if (menu == null) {
-            return ResponseEntity.notFound().build();
-        }
+    List<Menu> menus = menuRepository.findAllActiveMenus();
+    List<MenuResponse> response =
+        menus.stream().map(MenuResponse::from).collect(Collectors.toList());
 
-        return ResponseEntity.ok(MenuResponse.from(menu));
-    }
-
-    /**
-     * 전체 활성 메뉴 조회 (Cache Warming용)
-     */
-    @GetMapping("/all")
-    public ResponseEntity<List<MenuResponse>> getAllMenus(
-            @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
-    ) {
-        internalAuthValidator.validate(authToken);
-
-        List<Menu> menus = menuRepository.findAllActiveMenus();
-        List<MenuResponse> response = menus.stream()
-                .map(MenuResponse::from)
-                .collect(Collectors.toList());
-
-        log.info("전체 Menu 조회 (Cache Warming): count={}", response.size());
-        return ResponseEntity.ok(response);
-    }
+    log.info("전체 Menu 조회 (Cache Warming): count={}", response.size());
+    return ResponseEntity.ok(response);
+  }
 }

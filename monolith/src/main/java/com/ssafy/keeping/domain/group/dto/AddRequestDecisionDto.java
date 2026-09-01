@@ -9,8 +9,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AddRequestDecisionDto {
-    @NotNull
-    private Long groupAddRequestId;
-    @NotNull
-    private Boolean isAccept;
+  @NotNull private Long groupAddRequestId;
+  @NotNull private Boolean isAccept;
 }

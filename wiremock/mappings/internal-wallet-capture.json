@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPathPattern": "/internal/wallets/[0-9]+/stores/[0-9]+/capture"
+  },
+  "response": {
+    "status": 200,
+    "fixedDelayMilliseconds": 50,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "sufficient": true,
+      "policyOk": true,
+      "transactionId": 999999,
+      "errorCode": null
+    }
+  }
+}

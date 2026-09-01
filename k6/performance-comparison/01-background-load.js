@@ -15,17 +15,20 @@
  *  - Menu 목록 조회
  *
  *  [실행 방법]
- *  k6 run -e BASE_URL=http://<NGINX_IP> 01-background-load.js
+ *  k6 run -e MONO_BASE_URL=http://<main Private IP>:8080 01-background-load.js
  *
  *  VU 수와 시간을 변경하려면:
- *  k6 run -e BASE_URL=http://<NGINX_IP> -e BG_VUS=100 -e BG_DURATION=10m 01-background-load.js
+ *  k6 run -e MONO_BASE_URL=http://<main Private IP>:8080 -e BG_VUS=100 -e BG_DURATION=10m 01-background-load.js
+ *
+ *  [포화 탐색]
+ *  k6 run -e MONO_BASE_URL=http://<main Private IP>:8080 -e BG_MODE=ramp 01-background-load.js
  */
 
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Trend, Counter } from 'k6/metrics';
 import {
-    BASE_URL,
+    MONO_BASE_URL,
     getTestHeaders,
     randomCustomerId,
     randomStoreId,
@@ -47,13 +50,35 @@ const bgErrors = new Counter('bg_errors');
 const BG_VUS = parseInt(__ENV.BG_VUS || '50');
 const BG_DURATION = __ENV.BG_DURATION || '5m';
 
+// ── 포화 탐색(Stage A)용 계단 모드 ────────────────────────────────────────
+//  BG_MODE=ramp 로 실행하면 VU를 계단식으로 올리며 "어디서 꺾이는가"를 찾는다.
+//  형식: "목표VU:유지초,목표VU:유지초,..."  (각 구간 앞에 30초 램프가 붙는다)
+//
+//    k6 run -e BG_MODE=ramp -e MONO_BASE_URL=... 01-background-load.js
+//
+//  이 값이 본측정 스윕의 축이 된다. v1의 0/50/150/300/500 은 포화에 실패한
+//  측정에서 나온 추정치라 그대로 믿을 근거가 없다.
+const BG_MODE = __ENV.BG_MODE || 'constant';
+const BG_STAGES = __ENV.BG_STAGES || '50:60,100:60,200:60,300:60,500:60,800:60';
+
+function buildStages(spec) {
+    const stages = [];
+    spec.split(',').forEach((pair) => {
+        const [target, hold] = pair.split(':').map((v) => parseInt(v));
+        stages.push({ duration: '30s', target: target });  // 램프
+        stages.push({ duration: `${hold}s`, target: target });  // 유지
+    });
+    stages.push({ duration: '30s', target: 0 });
+    return stages;
+}
+
+const scenario = BG_MODE === 'ramp'
+    ? { executor: 'ramping-vus', startVUs: 0, stages: buildStages(BG_STAGES) }
+    : { executor: 'constant-vus', vus: BG_VUS, duration: BG_DURATION };
+
 export const options = {
     scenarios: {
-        background_load: {
-            executor: 'constant-vus',
-            vus: BG_VUS,
-            duration: BG_DURATION,
-        },
+        background_load: scenario,
     },
     thresholds: {
         // 배경 부하는 threshold를 넉넉하게 설정 (측정이 목적이 아님)
@@ -75,7 +100,7 @@ export default function () {
     // ──────────────────────────────────────────────
     const walletStart = Date.now();
     const walletRes = http.get(
-        `${BASE_URL}/wallets/individual/balance?page=0&size=10`,
+        `${MONO_BASE_URL}/wallets/individual/balance?page=0&size=10`,
         { headers }
     );
     walletDuration.add(Date.now() - walletStart);
@@ -92,7 +117,7 @@ export default function () {
     // ──────────────────────────────────────────────
     const bothStart = Date.now();
     const bothRes = http.get(
-        `${BASE_URL}/wallets/both/balance?page=0&size=10`,
+        `${MONO_BASE_URL}/wallets/both/balance?page=0&size=10`,
         { headers }
     );
     walletDuration.add(Date.now() - bothStart);
@@ -105,7 +130,7 @@ export default function () {
     // ──────────────────────────────────────────────
     const storeStart = Date.now();
     const storeRes = http.get(
-        `${BASE_URL}/stores/${storeId}`,
+        `${MONO_BASE_URL}/stores/${storeId}`,
         { headers }
     );
     storeDuration.add(Date.now() - storeStart);
@@ -122,7 +147,7 @@ export default function () {
     // ──────────────────────────────────────────────
     const menuStart = Date.now();
     const menuRes = http.get(
-        `${BASE_URL}/stores/${storeId}/menus`,
+        `${MONO_BASE_URL}/stores/${storeId}/menus`,
         { headers }
     );
     menuDuration.add(Date.now() - menuStart);
@@ -148,7 +173,9 @@ export function handleSummary(data) {
     const errors = data.metrics.bg_errors?.values['count'] || 0;
 
     console.log('\n========== 배경 부하 결과 요약 ==========');
-    console.log(`VU: ${BG_VUS}명, 시간: ${BG_DURATION}`);
+    console.log(BG_MODE === 'ramp'
+        ? `모드: ramp, 계단: ${BG_STAGES}`
+        : `VU: ${BG_VUS}명, 시간: ${BG_DURATION}`);
     console.log(`\nWallet API p(95): ${walletP95.toFixed(2)}ms`);
     console.log(`Store API p(95):  ${storeP95.toFixed(2)}ms`);
     console.log(`Menu API p(95):   ${menuP95.toFixed(2)}ms`);

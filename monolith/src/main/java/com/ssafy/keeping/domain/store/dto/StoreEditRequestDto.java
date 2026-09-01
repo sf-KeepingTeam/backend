@@ -8,11 +8,10 @@ import org.springframework.web.multipart.MultipartFile;
 @Data
 @AllArgsConstructor
 public class StoreEditRequestDto {
-    private String storeName;
+  private String storeName;
 
-    private String address;
+  private String address;
 
-    private String phoneNumber;
-    @Nullable
-    private MultipartFile imgFile;
+  private String phoneNumber;
+  @Nullable private MultipartFile imgFile;
 }

@@ -10,16 +10,16 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class RefundResponse {
-    private boolean success;
-    private boolean permanent;
-    private Long refundTransactionId;
-    private String message;
+  private boolean success;
+  private boolean permanent;
+  private Long refundTransactionId;
+  private String message;
 
-    public static RefundResponse permanentFailed(int httpStatus, String body) {
-        return RefundResponse.builder()
-                .success(false)
-                .permanent(true)
-                .message("HTTP " + httpStatus + ": " + body)
-                .build();
-    }
+  public static RefundResponse permanentFailed(int httpStatus, String body) {
+    return RefundResponse.builder()
+        .success(false)
+        .permanent(true)
+        .message("HTTP " + httpStatus + ": " + body)
+        .build();
+  }
 }

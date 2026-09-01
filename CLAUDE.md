@@ -212,3 +212,20 @@ backend/
 
 1. **결제·인증 3종 헤더**: `Idempotency-Key`(UUID) / `JWT_SECRET` 공유 / `X-Internal-Auth`. 세부는 각 도메인 CLAUDE.md 참조(idempotency / auth / internal).
 2. **프로필 혼동**: `prod`는 `ddl-auto=validate`. 스키마 변경 후 마이그레이션 없이 배포하면 기동 실패.
+
+## 워크플로우 (반드시 준수)
+- 기능 착수 전, 반드시 "완료 조건 = 통과해야 할 테스트 목록"을 먼저 제시하고 승인받을 것
+- 승인 전에는 코드를 수정하지 말 것
+- 테스트를 먼저 작성하고, 구현 후 테스트 실행 결과(실제 출력)를 보여줄 것
+- 커밋 전 `./gradlew test` 통과 확인
+
+## 기록 규칙
+- 아키텍처/기술 선택 결정 시 docs/decisions.md에 한 줄 추가 (형식: 날짜 | 결정 | 이유)
+- 같은 실수가 두 번 발생하면 docs/failures.md에 기록하고, 재발 방지 방법(훅 승격 여부)을 제안할 것
+
+## 컴팩션 지침
+- 컴팩션 시 반드시 보존: 수정 중이던 파일 목록, 테스트 실행 명령, 현재 작업의 완료 조건
+
+## 참조 문서 (매 세션 자동 로드)
+@docs/decisions.md
+@docs/failures.md

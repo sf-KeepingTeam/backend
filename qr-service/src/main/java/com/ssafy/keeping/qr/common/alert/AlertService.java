@@ -4,9 +4,9 @@ import com.ssafy.keeping.qr.domain.intent.model.PaymentIntent;
 
 public interface AlertService {
 
-    void notifyRecoveryFailed(PaymentIntent intent, String reason);
+  void notifyRecoveryFailed(PaymentIntent intent, String reason);
 
-    void notifyCircuitBreakerOpen(String clientName);
+  void notifyCircuitBreakerOpen(String clientName);
 
-    void notifyRecoveryWarning(PaymentIntent intent, int retryCount);
+  void notifyRecoveryWarning(PaymentIntent intent, int retryCount);
 }

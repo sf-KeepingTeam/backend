@@ -12,8 +12,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @ConfigurationPropertiesScan
 public class KeepingApplication {
 
-	public static void main(String[] args) {
-		SpringApplication.run(KeepingApplication.class, args);
-	}
-
+  public static void main(String[] args) {
+    SpringApplication.run(KeepingApplication.class, args);
+  }
 }

@@ -33,6 +33,10 @@ spring:
         format_sql: true
         dialect: org.hibernate.dialect.MySQLDialect
 
+  # Kafka (아웃박스 퍼블리셔용 — 비어 있으면 Kafka 빈이 생성되지 않는다)
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:}
+
   # Spring Cache (Redis)
   cache:
     type: redis
@@ -94,6 +98,32 @@ logging:
 # Slack 알림
 slack:
   webhook-url: ${SLACK_WEBHOOK_URL:}
+
+# 결제 튜닝 (PaymentTuningProperties)
+payment:
+  notification:
+    async: true
+    transport: http            # http | kafka (기본 http)
+  outbox:
+    enabled: false
+    poll-interval-ms: 500
+    batch-size: 100
+    max-retry: 10
+    retention-days: 7
+  approve:
+    split-transaction: true
+  pin:
+    token-enabled: false
+    token-ttl-seconds: 60
+    session-token:
+      revocation-check: false   # Redis 공유 확인 후 true 로 켬 (기본 false)
+
+# QR 롱폴링 통제변인 (P0-2: 기본 꺼짐 — 같은 jar 로 OFF/ON 러닝 가능)
+qr:
+  intent-wait:
+    enabled: ${QR_INTENT_WAIT_ENABLED:false}
+    timeout-ms: ${QR_INTENT_WAIT_TIMEOUT_MS:25000}
+    poll-interval-ms: ${QR_INTENT_WAIT_POLL_INTERVAL_MS:200}
 
 # 로드테스트 백도어 (테스트용)
 loadtest:

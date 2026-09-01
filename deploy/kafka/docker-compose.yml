@@ -1,0 +1,131 @@
+# =============================================================================
+#  Kafka — KRaft 단일 브로커 (keeping-kafka 전용 EC2)
+# =============================================================================
+#  설계 근거: docs/v2/infra/06-Kafka.md
+#
+#  ★ 왜 전용 EC2 한 대를 더 만드는가
+#    - keeping-loadgen 은 개선 전후 재측정에 계속 필요하다
+#      (result.md §7·§8 의 기준선을 만든 장비). 여기에 Kafka 를 얹으면
+#      "무엇이 얼마나 좋아졌나"에 답할 수 없게 된다.
+#    - keeping-allinone 은 구성 1(합침) 기준선이다. Kafka 를 얹으면
+#      2 vCPU 를 더 나눠 써야 해서 구성 1↔구성 2 비교가 오염된다.
+#    - main / payment 에 얹으면 측정 대상 자체를 오염시킨다.
+#    → 남는 선택지가 없다. 새 인스턴스가 가장 싸다.
+#
+#  ★ 왜 KRaft 인가
+#    ZooKeeper 가 필요 없다. 프로세스 하나로 끝나 t3.medium 에 적합하다.
+#
+#  ⚠️⚠️ replication.factor = 1 의 대가 — 문서에 반드시 남길 것
+#    브로커가 1대라 복제본이 없다. 브로커가 죽거나 디스크가 날아가면
+#    **미소비 메시지는 복구 경로 없이 유실된다.**
+#    포트폴리오 범위에서 수용한 제약이지, 운영에서 괜찮다는 뜻이 아니다.
+# =============================================================================
+
+services:
+  kafka:
+    image: apache/kafka:3.9.0
+    container_name: keeping-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      # ── KRaft: 브로커와 컨트롤러를 한 프로세스에서 ──────────────────────
+      - KAFKA_NODE_ID=1
+      - KAFKA_PROCESS_ROLES=broker,controller
+      - KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:9093
+      - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - CLUSTER_ID=${KAFKA_CLUSTER_ID}
+
+      # ── 리스너 ──────────────────────────────────────────────────────────
+      #  다른 EC2(main/payment)에서 붙으므로 advertised 는 Private IP 여야 한다.
+      #  localhost 나 컨테이너명으로 두면 원격 프로듀서가 붙지 못한다.
+      #  ⚠️ CONTROLLER 는 0.0.0.0 으로 쓰면 안 된다.
+      #     Kafka 3.9 는 KRaft 에서 컨트롤러 리스너도 advertised 목록에 넣어 검증하는데,
+      #     advertised.listeners 에 CONTROLLER 항목이 없으면 listeners 값에서 유도한다.
+      #     0.0.0.0 을 명시하면 그대로 유도돼 기동 자체가 실패한다:
+      #       IllegalArgumentException: advertised.listeners cannot use the
+      #       nonroutable meta-address 0.0.0.0
+      #     controller.quorum.voters(1@localhost:9093) 와 같은 주소로 맞춘다.
+      #     자세한 경위: deploy/kafka/kafkaTroubleShooting.md §1
+      - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092,CONTROLLER://localhost:9093
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://${KAFKA_ADVERTISED_HOST}:9092
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+
+      # ── 단일 브로커라 복제 인수를 전부 1로 낮춘다 ─────────────────────
+      #  기본값(3)으로 두면 __consumer_offsets 토픽 생성 자체가 실패한다.
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+      - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
+      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
+      - KAFKA_DEFAULT_REPLICATION_FACTOR=1
+      - KAFKA_MIN_INSYNC_REPLICAS=1
+
+      # ── 운영 파라미터 ───────────────────────────────────────────────────
+      - KAFKA_NUM_PARTITIONS=3
+      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=false     # 오타 토픽이 조용히 생기는 것을 막는다
+      - KAFKA_LOG_RETENTION_HOURS=${KAFKA_LOG_RETENTION_HOURS:-168}
+      - KAFKA_LOG_SEGMENT_BYTES=268435456
+      - KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS=0  # 개발 편의. 컨슈머 첫 조인이 빨라진다
+
+      # 힙 1GB. t3.medium(4GB)에서 나머지는 OS page cache 로 쓴다.
+      # Kafka 는 힙보다 page cache 가 중요하다.
+      - KAFKA_HEAP_OPTS=-Xms1g -Xmx1g
+
+      # ⚠️ apache/kafka 이미지 기본 log.dirs 는 /tmp/kraft-combined-logs 다.
+      #    이걸 지정하지 않으면 아래 volumes 마운트가 무시되고,
+      #    컨테이너를 재생성하는 순간 토픽·메시지가 통째로 사라진다.
+      - KAFKA_LOG_DIRS=/var/lib/kafka/data
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+    restart: unless-stopped
+    networks: [kafka-net]
+
+  # ── 관측 ────────────────────────────────────────────────────────────────
+  #  측정에서 배운 것: 지표가 없으면 결론이 안 난다 (result.md §3-9).
+  #  Kafka 도 마찬가지다. 붙이기 전에 관측부터 세운다.
+  #
+  #  kafka-exporter 는 JMX 가 아니라 Kafka 프로토콜로 붙어서
+  #  **컨슈머 랙(lag)** 을 준다. 이벤트 기반 전환에서 가장 중요한 지표다.
+  #    kafka_consumergroup_lag        컨슈머가 얼마나 밀렸나
+  #    kafka_topic_partition_current_offset  토픽별 생산량
+  #    kafka_brokers                  브로커 생존
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.7.0
+    container_name: keeping-kafka-exporter
+    command: ["--kafka.server=kafka:9092"]
+    ports:
+      - "9308:9308"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [kafka-net]
+
+  # ── 학습·확인용 UI (선택) ───────────────────────────────────────────────
+  #  토픽·파티션·메시지를 눈으로 본다. 보안그룹에서 내 IP 만 열 것.
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: keeping-kafka-ui
+    ports:
+      - "8090:8080"
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=keeping
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
+      - DYNAMIC_CONFIG_ENABLED=true
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [kafka-net]
+
+volumes:
+  kafka_data:
+
+networks:
+  kafka-net:
+    driver: bridge

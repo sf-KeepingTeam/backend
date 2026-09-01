@@ -1,11 +1,10 @@
 package com.ssafy.keeping.domain.store.dto;
 
+import java.time.LocalDate;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-
-import java.time.LocalDate;
 
 @Getter
 @Builder
@@ -13,9 +12,9 @@ import java.time.LocalDate;
 @AllArgsConstructor
 public class StatisticsRequestDto {
 
-    private LocalDate date;
+  private LocalDate date;
 
-    private LocalDate startDate;
+  private LocalDate startDate;
 
-    private LocalDate endDate;
+  private LocalDate endDate;
 }

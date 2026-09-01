@@ -1,0 +1,16 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/internal/wallets/[0-9]+/stores/[0-9]+/balance"
+  },
+  "response": {
+    "status": 200,
+    "fixedDelayMilliseconds": 50,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "walletId": 1,
+      "storeId": 1,
+      "balance": 1000000
+    }
+  }
+}

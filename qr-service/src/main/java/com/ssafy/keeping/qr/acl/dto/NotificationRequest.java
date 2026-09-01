@@ -10,8 +10,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class NotificationRequest {
-    private String targetType;  // CUSTOMER, OWNER
-    private Long targetId;
-    private String type;        // NotificationType
-    private String content;
+  private String targetType; // CUSTOMER, OWNER
+  private Long targetId;
+  private String type; // NotificationType
+  private String content;
 }

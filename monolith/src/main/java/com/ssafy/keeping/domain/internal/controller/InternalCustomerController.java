@@ -15,77 +15,71 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-/**
- * Internal API - 마이크로서비스 간 통신용
- */
+/** Internal API - 마이크로서비스 간 통신용 */
 @Slf4j
 @RestController
 @RequestMapping("/internal/customers")
 @RequiredArgsConstructor
 public class InternalCustomerController {
 
-    private final CustomerRepository customerRepository;
-    private final InternalAuthValidator internalAuthValidator;
-    private final PinAuthService pinAuthService;
+  private final CustomerRepository customerRepository;
+  private final InternalAuthValidator internalAuthValidator;
+  private final PinAuthService pinAuthService;
 
-    /**
-     * 고객 정보 조회
-     */
-    @GetMapping("/{customerId}")
-    public ResponseEntity<CustomerResponse> getCustomer(
-            @PathVariable Long customerId,
-            @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
-    ) {
-        internalAuthValidator.validate(authToken);
+  /** 고객 정보 조회 */
+  @GetMapping("/{customerId}")
+  public ResponseEntity<CustomerResponse> getCustomer(
+      @PathVariable Long customerId,
+      @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false)
+          String authToken) {
+    internalAuthValidator.validate(authToken);
 
-        Customer customer = customerRepository.findByCustomerIdAndDeletedAtIsNull(customerId)
-                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+    Customer customer =
+        customerRepository
+            .findByCustomerIdAndDeletedAtIsNull(customerId)
+            .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
-        return ResponseEntity.ok(CustomerResponse.from(customer));
-    }
+    return ResponseEntity.ok(CustomerResponse.from(customer));
+  }
 
-    /**
-     * PIN 설정 (테스트용)
-     */
-    @PostMapping("/{customerId}/pin-set")
-    public ResponseEntity<Void> setPin(
-            @PathVariable Long customerId,
-            @RequestBody PinVerifyRequest request,
-            @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
-    ) {
-        internalAuthValidator.validate(authToken);
+  /** PIN 설정 (테스트용) */
+  @PostMapping("/{customerId}/pin-set")
+  public ResponseEntity<Void> setPin(
+      @PathVariable Long customerId,
+      @RequestBody PinVerifyRequest request,
+      @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false)
+          String authToken) {
+    internalAuthValidator.validate(authToken);
 
-        // 고객 존재 여부 확인
-        customerRepository.findByCustomerIdAndDeletedAtIsNull(customerId)
-                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+    // 고객 존재 여부 확인
+    customerRepository
+        .findByCustomerIdAndDeletedAtIsNull(customerId)
+        .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
-        // PIN 설정
-        pinAuthService.setOrUpdatePin(customerId, request.getPin());
+    // PIN 설정
+    pinAuthService.setOrUpdatePin(customerId, request.getPin());
 
-        return ResponseEntity.ok().build();
-    }
+    return ResponseEntity.ok().build();
+  }
 
-    /**
-     * PIN 검증
-     */
-    @PostMapping("/{customerId}/pin-verify")
-    public ResponseEntity<PinVerifyResponse> verifyPin(
-            @PathVariable Long customerId,
-            @RequestBody PinVerifyRequest request,
-            @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
-    ) {
-        internalAuthValidator.validate(authToken);
+  /** PIN 검증 */
+  @PostMapping("/{customerId}/pin-verify")
+  public ResponseEntity<PinVerifyResponse> verifyPin(
+      @PathVariable Long customerId,
+      @RequestBody PinVerifyRequest request,
+      @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false)
+          String authToken) {
+    internalAuthValidator.validate(authToken);
 
-        // 고객 존재 여부 확인
-        customerRepository.findByCustomerIdAndDeletedAtIsNull(customerId)
-                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+    // 고객 존재 여부 확인
+    customerRepository
+        .findByCustomerIdAndDeletedAtIsNull(customerId)
+        .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
-        // PIN 검증
-        boolean pinMatches = pinAuthService.verify(customerId, request.getPin());
+    // PIN 검증
+    boolean pinMatches = pinAuthService.verify(customerId, request.getPin());
 
-        return ResponseEntity.ok(PinVerifyResponse.builder()
-                .verified(pinMatches)
-                .customerId(customerId)
-                .build());
-    }
+    return ResponseEntity.ok(
+        PinVerifyResponse.builder().verified(pinMatches).customerId(customerId).build());
+  }
 }

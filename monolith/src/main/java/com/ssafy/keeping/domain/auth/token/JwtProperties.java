@@ -4,11 +4,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "app.auth.jwt")
 public record JwtProperties(
-        String issuer,
-        String secret,
-        long accessTtlSeconds,
-        long refreshTtlSeconds
-) {}
+    String issuer, String secret, long accessTtlSeconds, long refreshTtlSeconds) {}
 
 /*
 @ConfigurationProperties(prefix = "app.auth.jwt")

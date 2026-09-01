@@ -5,6 +5,7 @@ build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 docs/**/*.md
+!docs/v3/**/*.md
 !**/CLAUDE.md
 !.claude/commands/*.md
 **/gradle.properties
@@ -108,4 +109,12 @@ body.json
 nul
 
 ### Local MySQL data ###
-mysql/
+mysql/data/
+!mysql/init/
+!mysql/migration/
+!mysql/ops/
+
+### Tool state (local only) ###
+.omc/
+.claude-watch/
+.claude/harness-log/

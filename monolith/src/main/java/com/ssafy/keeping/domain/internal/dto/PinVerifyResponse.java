@@ -10,20 +10,14 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class PinVerifyResponse {
-    private boolean verified;
-    private Long customerId;
+  private boolean verified;
+  private Long customerId;
 
-    public static PinVerifyResponse valid(Long customerId) {
-        return PinVerifyResponse.builder()
-                .verified(true)
-                .customerId(customerId)
-                .build();
-    }
+  public static PinVerifyResponse valid(Long customerId) {
+    return PinVerifyResponse.builder().verified(true).customerId(customerId).build();
+  }
 
-    public static PinVerifyResponse invalid(Long customerId) {
-        return PinVerifyResponse.builder()
-                .verified(false)
-                .customerId(customerId)
-                .build();
-    }
+  public static PinVerifyResponse invalid(Long customerId) {
+    return PinVerifyResponse.builder().verified(false).customerId(customerId).build();
+  }
 }

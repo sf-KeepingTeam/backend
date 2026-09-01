@@ -12,17 +12,17 @@ import lombok.NoArgsConstructor;
 @Builder
 public class CustomerProfileResponse {
 
-    private String name;
-    private String phoneNumber;
-    private String email;
-    private String imgUrl;
+  private String name;
+  private String phoneNumber;
+  private String email;
+  private String imgUrl;
 
-    public static CustomerProfileResponse from(Customer customer) {
-        return CustomerProfileResponse.builder()
-                .name(customer.getName())
-                .phoneNumber(customer.getPhoneNumber())
-                .email(customer.getEmail())
-                .imgUrl(customer.getImgUrl())
-                .build();
-    }
+  public static CustomerProfileResponse from(Customer customer) {
+    return CustomerProfileResponse.builder()
+        .name(customer.getName())
+        .phoneNumber(customer.getPhoneNumber())
+        .email(customer.getEmail())
+        .imgUrl(customer.getImgUrl())
+        .build();
+  }
 }

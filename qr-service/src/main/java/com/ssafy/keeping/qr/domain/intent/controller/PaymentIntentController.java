@@ -8,70 +8,59 @@ import com.ssafy.keeping.qr.domain.intent.dto.PaymentIntentDetailResponse;
 import com.ssafy.keeping.qr.domain.intent.service.PaymentIntentService;
 import com.ssafy.keeping.qr.security.UserPrincipal;
 import jakarta.validation.Valid;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.UUID;
-
 @RestController
 @RequestMapping
 @RequiredArgsConstructor
 public class PaymentIntentController {
 
-    private final PaymentIntentService paymentIntentService;
+  private final PaymentIntentService paymentIntentService;
 
-    /**
-     * 점원/점주가 손님 QR을 스캔하고 결제 의도를 생성
-     *
-     * 흐름:
-     * 1. POST /api/qr/{qrTokenId}/scan → 세션 토큰 발급
-     * 2. POST /cpqr/{sessionToken}/initiate → 결제 의도 생성 (이 API)
-     */
-    @PostMapping("/cpqr/{sessionToken}/initiate")
-    public ResponseEntity<ApiResponse<PaymentIntentDetailResponse>> initiate(
-            @PathVariable String sessionToken,
-            @RequestHeader(value = HttpHeaderConstants.IDEMPOTENCY_KEY, required = false) String idempotencyKeyHeader,
-            @AuthenticationPrincipal UserPrincipal principal,
-            @Valid @RequestBody PaymentInitiateRequest body
-    ) {
-        IdempotentResult<PaymentIntentDetailResponse> res =
-                paymentIntentService.initiate(sessionToken, idempotencyKeyHeader, principal.id(), body);
+  /**
+   * 점원/점주가 손님 QR을 스캔하고 결제 의도를 생성
+   *
+   * <p>흐름: 1. POST /api/qr/{qrTokenId}/scan → 세션 토큰 발급 2. POST /cpqr/{sessionToken}/initiate → 결제
+   * 의도 생성 (이 API)
+   */
+  @PostMapping("/cpqr/{sessionToken}/initiate")
+  public ResponseEntity<ApiResponse<PaymentIntentDetailResponse>> initiate(
+      @PathVariable String sessionToken,
+      @RequestHeader(value = HttpHeaderConstants.IDEMPOTENCY_KEY, required = false)
+          String idempotencyKeyHeader,
+      @AuthenticationPrincipal UserPrincipal principal,
+      @Valid @RequestBody PaymentInitiateRequest body) {
+    IdempotentResult<PaymentIntentDetailResponse> res =
+        paymentIntentService.initiate(sessionToken, idempotencyKeyHeader, principal.id(), body);
 
-        return ResponseEntity
-                .status(res.getHttpStatus())
-                .body(ApiResponse.success(
-                        res.isReplay() ? "이전에 처리된 요청의 결과입니다." : "결제 요청이 생성되었습니다.",
-                        res.getHttpStatus().value(),
-                        res.getBody()));
-    }
+    return ResponseEntity.status(res.getHttpStatus())
+        .body(
+            ApiResponse.success(
+                res.isReplay() ? "이전에 처리된 요청의 결과입니다." : "결제 요청이 생성되었습니다.",
+                res.getHttpStatus().value(),
+                res.getBody()));
+  }
 
-    /**
-     * 의도 상세 조회(손님/점주 공용)
-     */
-    @GetMapping("/api/payments/intent/{intentPublicId}")
-    public ResponseEntity<ApiResponse<PaymentIntentDetailResponse>> getDetail(
-            @PathVariable UUID intentPublicId
-    ) {
-        PaymentIntentDetailResponse res = paymentIntentService.getDetail(intentPublicId);
-        return ResponseEntity
-                .status(HttpStatus.OK)
-                .body(ApiResponse.success("OK", HttpStatus.OK.value(), res));
-    }
+  /** 의도 상세 조회(손님/점주 공용) */
+  @GetMapping("/api/payments/intent/{intentPublicId}")
+  public ResponseEntity<ApiResponse<PaymentIntentDetailResponse>> getDetail(
+      @PathVariable UUID intentPublicId) {
+    PaymentIntentDetailResponse res = paymentIntentService.getDetail(intentPublicId);
+    return ResponseEntity.status(HttpStatus.OK)
+        .body(ApiResponse.success("OK", HttpStatus.OK.value(), res));
+  }
 
-    /**
-     * 결제 의도 취소 (고객)
-     */
-    @PostMapping("/api/payments/intent/{publicId}/cancel")
-    public ResponseEntity<ApiResponse<Void>> cancelIntent(
-            @PathVariable UUID publicId,
-            @AuthenticationPrincipal UserPrincipal principal
-    ) {
-        paymentIntentService.cancel(publicId, principal.id());
-        return ResponseEntity
-                .status(HttpStatus.OK)
-                .body(ApiResponse.success("결제 요청이 취소되었습니다.", HttpStatus.OK.value(), null));
-    }
+  /** 결제 의도 취소 (고객) */
+  @PostMapping("/api/payments/intent/{publicId}/cancel")
+  public ResponseEntity<ApiResponse<Void>> cancelIntent(
+      @PathVariable UUID publicId, @AuthenticationPrincipal UserPrincipal principal) {
+    paymentIntentService.cancel(publicId, principal.id());
+    return ResponseEntity.status(HttpStatus.OK)
+        .body(ApiResponse.success("결제 요청이 취소되었습니다.", HttpStatus.OK.value(), null));
+  }
 }

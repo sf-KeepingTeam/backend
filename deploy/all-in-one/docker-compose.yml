@@ -1,0 +1,281 @@
+# =============================================================================
+# 구성 1 (합침) — keeping-main EC2 한 대에 전부 올린다
+# =============================================================================
+# "서버를 안 나눴으면 어땠을까"를 재현하기 위한 구성.
+#
+#   컨테이너: monolith(8080) + qr-service(8081) + mysql 1대 + redis 1대
+#   payment EC2는 이 구성 동안 정지시킨다.
+#
+# ★ deploy/monolith + deploy/qr-service 와 "공유 여부"만 다르고 나머지는 전부 동일하다.
+#   그래야 구성 1 vs 구성 2 차이가 정확히 "나눴냐 안 나눴냐" 하나가 된다.
+#
+#   같음: 이미지 이름, DB 이름, JVM 힙, 톰캣/Hikari 통제변인, 백도어, CACHE_MODE,
+#         Redis 정책(allkeys-lru), ddl-auto, 시크릿
+#   다름: MySQL 2대→1대(논리 DB 2개) / Redis 2대→1대 / 호스트 2대→1대
+#
+# 기동:  cd ~/keeping/deploy/all-in-one && docker compose up -d
+# 정지:  docker compose down          (데이터 유지)
+#        docker compose down -v       (데이터까지 삭제)
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # main-service (monolith)
+  # ---------------------------------------------------------------------------
+  monolith:
+    image: ${DOCKER_USERNAME}/keeping-monolith:latest
+    container_name: keeping-monolith
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-prod}
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/ssafy_fintech_db?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true&useLocalSessionState=${USE_LOCAL_SESSION_STATE:-false}
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+      - JWT_SECRET=${JWT_SECRET}
+      - INTERNAL_AUTH_TOKEN=${INTERNAL_AUTH_TOKEN}
+      - FE_BASE_URL=${FE_BASE_URL:-http://localhost:3030}
+      # 같은 compose 네트워크라 컨테이너 이름으로 닿는다 (구성 2에서는 Private IP)
+      - QR_SERVICE_URL=http://qr-service:8081
+      - QR_WEBHOOK_ENABLED=${QR_WEBHOOK_ENABLED:-true}
+      - LOADTEST_BACKDOOR_ENABLED=${LOADTEST_BACKDOOR_ENABLED:-false}
+
+      # ---------------------------------------------------------------------
+      # 정적 참조 데이터 캐싱 (2026-08-30 신설) — none | caffeine | redis
+      #   기본값 none = NoOpCacheManager = 지금까지의 모든 러닝과 동일 조건
+      #   ⚠️ 이 줄이 없으면 .env 를 고쳐도 컨테이너에 전달되지 않는다 (결함 12 패턴)
+      #   기동 로그의  [Cache] provider=...  로 실제 적용을 확인할 것
+      # ---------------------------------------------------------------------
+      - CACHE_PROVIDER=${CACHE_PROVIDER:-none}
+      # --- 측정 통제변인 (구성 2와 동일하게 유지할 것) ---
+      - SERVER_TOMCAT_THREADS_MAX=${SERVER_TOMCAT_THREADS_MAX:-200}
+      - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=${SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE:-20}
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=${SPRING_JPA_HIBERNATE_DDL_AUTO:-validate}
+      # ---------------------------------------------------------------------
+      # 분산추적 비활성화 — 측정 오염원이라 끈다
+      #   (1) Zipkin 서버가 없어 flush마다 ConnectException + 로그 폭주
+      #   (2) monolith는 prod 프로필이라 샘플링 0.1인데 qr-service는 base 그대로 1.0 →
+      #       두 서비스의 오버헤드가 비대칭이라 비교가 오염된다
+      # 측정에서 껐다는 사실은 result.md 에 기록할 것.
+      - MANAGEMENT_TRACING_ENABLED=${MANAGEMENT_TRACING_ENABLED:-false}
+      # Tomcat ThreadPool MBean 등록 — 이게 없으면 tomcat_threads_* 지표가 통째로 안 나온다.
+      # Spring Boot 기본값이 false 라서, 켜지 않으면
+      #   tomcat_sessions_* 만 나오고 tomcat_threads_busy / _config_max 는 없다.
+      #   → Q1("병목이 DB인가 톰캣 스레드인가 CPU인가")의 세 후보 중 하나를 못 본다.
+      #   → SERVER_TOMCAT_THREADS_MAX 가 실제로 먹었는지 검증할 방법도 사라진다.
+      # 양쪽 서비스·양쪽 구성에 동일하게 적용하므로 비교에는 편향을 주지 않는다.
+      # --- v3 세션 토큰 / PIN 속도제한 (구성 2와 키 이름·기본값 동일하게 유지) ---
+      # 기본값을 false 로 둔 이유: .env 를 비워두면 v2 기준선(F0 대응)이 그대로 재현된다.
+      # RATE_LIMIT 만 기본 true — 보안 기능이지 성능 기능이 아니다.
+      # (참고: 속도제한은 /customers/pin/verify-token 에만 걸린다. PIN_MODE=pin 경로는 영향 없음)
+      - PAYMENT_PIN_SESSION_TOKEN_ENABLED=${PAYMENT_PIN_SESSION_TOKEN_ENABLED:-false}
+      - PAYMENT_PIN_SESSION_TOKEN_TTL_SECONDS=${PAYMENT_PIN_SESSION_TOKEN_TTL_SECONDS:-180}
+      - PAYMENT_PIN_SESSION_TOKEN_MAX_USES=${PAYMENT_PIN_SESSION_TOKEN_MAX_USES:-5}
+      - PAYMENT_PIN_SESSION_TOKEN_MAX_AMOUNT_PER_USE=${PAYMENT_PIN_SESSION_TOKEN_MAX_AMOUNT_PER_USE:-100000}
+      - PAYMENT_PIN_SESSION_TOKEN_MAX_AMOUNT_TOTAL=${PAYMENT_PIN_SESSION_TOKEN_MAX_AMOUNT_TOTAL:-300000}
+      - PAYMENT_PIN_RATE_LIMIT_ENABLED=${PAYMENT_PIN_RATE_LIMIT_ENABLED:-true}
+      - PAYMENT_PIN_RATE_LIMIT_PER_MINUTE=${PAYMENT_PIN_RATE_LIMIT_PER_MINUTE:-10}
+      - SERVER_TOMCAT_MBEANREGISTRY_ENABLED=true
+
+      # ── v3 Kafka 컨슈머 (#53) ───────────────────────────────────────────
+      - NOTIFICATION_KAFKA_CONSUMER_ENABLED=${NOTIFICATION_KAFKA_CONSUMER_ENABLED:-false}
+      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - keeping-network
+
+  # ---------------------------------------------------------------------------
+  # payment-service (qr-service)
+  # ---------------------------------------------------------------------------
+  qr-service:
+    image: ${DOCKER_USERNAME}/keeping-qr-service:latest
+    container_name: keeping-qr-service
+    ports:
+      - "8081:8081"
+    environment:
+      - MONOLITH_URL=http://monolith:8080
+      - DB_URL=jdbc:mysql://mysql:3306/payment_service?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true&useLocalSessionState=${USE_LOCAL_SESSION_STATE:-false}
+      - DB_USERNAME=root
+      - DB_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=${JWT_SECRET}
+      - INTERNAL_AUTH_TOKEN=${INTERNAL_AUTH_TOKEN}
+      - LOADTEST_BACKDOOR_ENABLED=${LOADTEST_BACKDOOR_ENABLED:-false}
+      - SPRING_PROFILES_ACTIVE=${QR_SPRING_PROFILES_ACTIVE:-docker}
+      - CACHE_MODE=${CACHE_MODE:-WRITE_THROUGH}
+      - CACHE_WARMING_ENABLED=${CACHE_WARMING_ENABLED:-true}
+      - HIKARI_MAX_POOL_SIZE=${HIKARI_MAX_POOL_SIZE:-15}
+      - SERVER_TOMCAT_THREADS_MAX=${SERVER_TOMCAT_THREADS_MAX:-200}
+      # ---------------------------------------------------------------------
+      # 분산추적 비활성화 — 측정 오염원이라 끈다
+      #   (1) Zipkin 서버가 없어 flush마다 ConnectException + 로그 폭주
+      #   (2) monolith는 prod 프로필이라 샘플링 0.1인데 qr-service는 base 그대로 1.0 →
+      #       두 서비스의 오버헤드가 비대칭이라 비교가 오염된다
+      # 측정에서 껐다는 사실은 result.md 에 기록할 것.
+      - MANAGEMENT_TRACING_ENABLED=${MANAGEMENT_TRACING_ENABLED:-false}
+      # Tomcat ThreadPool MBean 등록 — 이게 없으면 tomcat_threads_* 지표가 통째로 안 나온다.
+      # Spring Boot 기본값이 false 라서, 켜지 않으면
+      #   tomcat_sessions_* 만 나오고 tomcat_threads_busy / _config_max 는 없다.
+      #   → Q1("병목이 DB인가 톰캣 스레드인가 CPU인가")의 세 후보 중 하나를 못 본다.
+      #   → SERVER_TOMCAT_THREADS_MAX 가 실제로 먹었는지 검증할 방법도 사라진다.
+      # 양쪽 서비스·양쪽 구성에 동일하게 적용하므로 비교에는 편향을 주지 않는다.
+      # --- v3 개선 플래그 ---
+      # ⚠️ 코드 기본값(application.yml)은 async=true / split-transaction=true 다.
+      #    여기서 명시하지 않으면 C0(구성1 기준선)가 F0 조건과 달라진다. 반드시 명시할 것.
+      #    .env 를 비워두면 전부 false = v2 기준선(F0 대응).
+      - PAYMENT_NOTIFICATION_ASYNC=${PAYMENT_NOTIFICATION_ASYNC:-false}
+      - PAYMENT_APPROVE_SPLIT_TRANSACTION=${PAYMENT_APPROVE_SPLIT_TRANSACTION:-false}
+      - PAYMENT_PIN_TOKEN_ENABLED=${PAYMENT_PIN_TOKEN_ENABLED:-false}
+      - PAYMENT_PIN_SESSION_TOKEN_REVOCATION_CHECK=${PAYMENT_PIN_SESSION_TOKEN_REVOCATION_CHECK:-false}
+      - SERVER_TOMCAT_MBEANREGISTRY_ENABLED=true
+
+      # ── v3 Kafka 아웃박스 (#50~#53) ──────────────────────────────────────
+      # ── 알림 스레드풀 통제변인 (2026-08-31) ──────────────────────────
+      #  기본값 2/4/64 = F6r 조건 그대로. F6-pool 러닝에서만 올린다.
+      #  ⚠️ 이 줄이 없으면 .env 를 고쳐도 컨테이너에 전달되지 않는다 (결함 12 패턴)
+      #  기동 로그의  [NOTIF_EXECUTOR] core=.. max=.. queue=..  로 실제 적용 확인
+      - NOTIFICATION_EXECUTOR_CORE_SIZE=${NOTIFICATION_EXECUTOR_CORE_SIZE:-2}
+      - NOTIFICATION_EXECUTOR_MAX_SIZE=${NOTIFICATION_EXECUTOR_MAX_SIZE:-4}
+      - NOTIFICATION_EXECUTOR_QUEUE_CAPACITY=${NOTIFICATION_EXECUTOR_QUEUE_CAPACITY:-64}
+      # ── 롱폴링 통제변인 (2026-09-01) ────────────────────────────────
+      #  기본 false = 롱폴링 없음(F6r 조건 그대로). ON 러닝에서만 true.
+      #  ⚠️ 이 줄이 없으면 .env 를 고쳐도 컨테이너에 전달되지 않는다 (결함 12 패턴)
+      - QR_INTENT_WAIT_ENABLED=${QR_INTENT_WAIT_ENABLED:-false}
+      - QR_INTENT_WAIT_TIMEOUT_MS=${QR_INTENT_WAIT_TIMEOUT_MS:-25000}
+      - QR_INTENT_WAIT_POLL_INTERVAL_MS=${QR_INTENT_WAIT_POLL_INTERVAL_MS:-200}
+      - PAYMENT_NOTIFICATION_TRANSPORT=${PAYMENT_NOTIFICATION_TRANSPORT:-http}
+      - PAYMENT_OUTBOX_ENABLED=${PAYMENT_OUTBOX_ENABLED:-false}
+      - PAYMENT_OUTBOX_POLL_INTERVAL_MS=${PAYMENT_OUTBOX_POLL_INTERVAL_MS:-500}
+      - PAYMENT_OUTBOX_BATCH_SIZE=${PAYMENT_OUTBOX_BATCH_SIZE:-100}
+      - PAYMENT_OUTBOX_MAX_RETRY=${PAYMENT_OUTBOX_MAX_RETRY:-10}
+      - PAYMENT_OUTBOX_RETENTION_DAYS=${PAYMENT_OUTBOX_RETENTION_DAYS:-7}
+      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - keeping-network
+
+  # ---------------------------------------------------------------------------
+  # MySQL — 1대. 논리 DB 2개 (init/01-databases.sql 이 만든다)
+  # ---------------------------------------------------------------------------
+  mysql:
+    image: mysql:8.0
+    container_name: keeping-mysql
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init:/docker-entrypoint-initdb.d:ro
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=ssafy_fintech_db
+      - MYSQL_CHARACTER_SET_SERVER=utf8mb4
+      - MYSQL_COLLATION_SERVER=utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - keeping-network
+
+  # ---------------------------------------------------------------------------
+  # Redis — 1대.
+  # maxmemory 768mb = 구성 2의 512(main) + 256(payment). 총량을 맞춰서
+  # "메모리가 줄어서 느려진 것"과 "공유해서 느려진 것"이 섞이지 않게 한다.
+  # appendonly 는 켜지 않는다 (구성 2와 동일. 켜면 구성 1에만 디스크 I/O가 생긴다)
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: keeping-redis
+    command: redis-server --maxmemory 768mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - keeping-network
+
+  # ---------------------------------------------------------------------------
+  # mysqld_exporter — 구성1 의 MySQL 내부 지표.
+  #
+  #   구성2(main/payment)에는 이미 붙어 있는데 여기만 없어서
+  #   result.md §11-9 에 "구성1 쿼리 프로파일은 추론" 이라는 공백이 남아 있었다.
+  #   ①②③④ 를 allinone 에서 재기로 했으므로(final_0825.md §1) 반드시 필요하다.
+  #
+  #   ⚠️ 이 MySQL 인스턴스에는 DB 가 둘이다 (ssafy_fintech_db + payment_service).
+  #      익스포터는 인스턴스 단위라 둘을 합친 값이 나온다. 그게 맞다 —
+  #      구성1 의 병목은 "두 서비스가 한 MySQL 을 나눠 쓴다" 는 것이기 때문이다.
+  #
+  #   ⚠️ 이 컨테이너가 붙기 전/후는 측정 환경이 다르다.
+  #      C0(1.28 건/초)와 절대값을 비교할 때 이 차이를 감안한다.
+  # ---------------------------------------------------------------------------
+  mysqld-exporter:
+    image: prom/mysqld-exporter:v0.15.1
+    container_name: allinone-mysqld-exporter
+    environment:
+      # v0.15 부터 DATA_SOURCE_NAME 이 제거됐다. 접속 정보는 my.cnf 로 준다.
+      #   MYSQLD_EXPORTER_PASSWORD 는 my.cnf 의 password 를 덮어쓴다(둘 중 하나면 된다).
+      - MYSQLD_EXPORTER_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    volumes:
+      # 배포 시 아래로 생성한다 (deploy/all-in-one/ 에서):
+      #   printf '[client]\nuser=root\nhost=mysql\nport=3306\n' > mysqld-exporter.cnf
+      - ./mysqld-exporter.cnf:/cfg/.my.cnf:ro
+    command:
+      - --config.my-cnf=/cfg/.my.cnf
+      - --collect.global_status
+      - --collect.global_variables
+      - --collect.info_schema.innodb_metrics
+      - --collect.info_schema.processlist
+      - --collect.perf_schema.tablelocks
+      - --collect.perf_schema.eventswaits
+      - --collect.perf_schema.indexiowaits
+      - --collect.perf_schema.tableiowaits
+    ports:
+      - "9104:9104"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - keeping-network
+
+volumes:
+  mysql_data:
+  redis_data:
+
+networks:
+  keeping-network:
+    driver: bridge

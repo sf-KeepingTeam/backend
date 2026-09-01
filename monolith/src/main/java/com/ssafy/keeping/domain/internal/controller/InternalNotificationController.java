@@ -5,61 +5,50 @@ import com.ssafy.keeping.domain.internal.service.InternalAuthValidator;
 import com.ssafy.keeping.domain.notification.entity.NotificationType;
 import com.ssafy.keeping.domain.notification.service.NotificationService;
 import com.ssafy.keeping.global.constants.HttpHeaderConstants;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Map;
-
-/**
- * Internal API - 마이크로서비스 간 통신용
- */
+/** Internal API - 마이크로서비스 간 통신용 */
 @Slf4j
 @RestController
 @RequestMapping("/internal/notifications")
 @RequiredArgsConstructor
 public class InternalNotificationController {
 
-    private final NotificationService notificationService;
-    private final InternalAuthValidator internalAuthValidator;
+  private final NotificationService notificationService;
+  private final InternalAuthValidator internalAuthValidator;
 
-    /**
-     * 알림 발송
-     */
-    @PostMapping("/send")
-    public ResponseEntity<Map<String, String>> sendNotification(
-            @RequestBody NotificationRequest request,
-            @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false) String authToken
-    ) {
-        internalAuthValidator.validate(authToken);
+  /** 알림 발송 */
+  @PostMapping("/send")
+  public ResponseEntity<Map<String, String>> sendNotification(
+      @RequestBody NotificationRequest request,
+      @RequestHeader(value = HttpHeaderConstants.X_INTERNAL_AUTH, required = false)
+          String authToken) {
+    internalAuthValidator.validate(authToken);
 
-        NotificationType notificationType;
-        try {
-            notificationType = NotificationType.valueOf(request.getNotificationType());
-        } catch (IllegalArgumentException e) {
-            log.warn("알림 타입 변환 실패: {}", request.getNotificationType());
-            notificationType = NotificationType.PAYMENT_APPROVED;
-        }
-
-        if ("CUSTOMER".equalsIgnoreCase(request.getReceiverType())) {
-            notificationService.sendToCustomer(
-                    request.getReceiverId(),
-                    notificationType,
-                    request.getContent()
-            );
-        } else if ("OWNER".equalsIgnoreCase(request.getReceiverType())) {
-            notificationService.sendToOwner(
-                    request.getReceiverId(),
-                    notificationType,
-                    request.getContent()
-            );
-        } else {
-            log.warn("알 수 없는 수신자 타입: {}", request.getReceiverType());
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Unknown receiver type: " + request.getReceiverType()));
-        }
-
-        return ResponseEntity.ok(Map.of("status", "sent"));
+    NotificationType notificationType;
+    try {
+      notificationType = NotificationType.valueOf(request.getNotificationType());
+    } catch (IllegalArgumentException e) {
+      log.warn("알림 타입 변환 실패: {}", request.getNotificationType());
+      notificationType = NotificationType.PAYMENT_APPROVED;
     }
+
+    if ("CUSTOMER".equalsIgnoreCase(request.getReceiverType())) {
+      notificationService.sendToCustomer(
+          request.getReceiverId(), notificationType, request.getContent());
+    } else if ("OWNER".equalsIgnoreCase(request.getReceiverType())) {
+      notificationService.sendToOwner(
+          request.getReceiverId(), notificationType, request.getContent());
+    } else {
+      log.warn("알 수 없는 수신자 타입: {}", request.getReceiverType());
+      return ResponseEntity.badRequest()
+          .body(Map.of("error", "Unknown receiver type: " + request.getReceiverType()));
+    }
+
+    return ResponseEntity.ok(Map.of("status", "sent"));
+  }
 }

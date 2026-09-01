@@ -15,18 +15,16 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class OwnerFavoriteController {
 
-    private final StoreFavoriteService storeFavoriteService;
+  private final StoreFavoriteService storeFavoriteService;
 
-    /**
-     * 점주의 특정 가게 찜 개수 조회
-     */
-    @GetMapping("/stores/{storeId}/count")
-    public ResponseEntity<ApiResponse<StoreFavoriteCountResponseDto>> getStoreFavoriteCount(
-            @AuthenticationPrincipal UserPrincipal principal,
-            @PathVariable Long storeId
-    ) {
-        Long ownerId = principal.id();
-        StoreFavoriteCountResponseDto dto = storeFavoriteService.getStoreFavoriteCount(ownerId, storeId);
-        return ResponseEntity.ok(ApiResponse.success("가게 찜 개수 조회에 성공했습니다.", HttpStatus.OK.value(), dto));
-    }
+  /** 점주의 특정 가게 찜 개수 조회 */
+  @GetMapping("/stores/{storeId}/count")
+  public ResponseEntity<ApiResponse<StoreFavoriteCountResponseDto>> getStoreFavoriteCount(
+      @AuthenticationPrincipal UserPrincipal principal, @PathVariable Long storeId) {
+    Long ownerId = principal.id();
+    StoreFavoriteCountResponseDto dto =
+        storeFavoriteService.getStoreFavoriteCount(ownerId, storeId);
+    return ResponseEntity.ok(
+        ApiResponse.success("가게 찜 개수 조회에 성공했습니다.", HttpStatus.OK.value(), dto));
+  }
 }

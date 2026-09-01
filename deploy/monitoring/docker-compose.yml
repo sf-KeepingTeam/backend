@@ -1,0 +1,44 @@
+version: '3.8'
+
+# =============================================================================
+# 관측 스택 — loadgen EC2에서 실행한다
+# =============================================================================
+# 프롬프트 원안은 monolith EC2에 Prometheus/Grafana를 올리는 것이었으나,
+# 부하 생성기를 분리한 것과 같은 이유로 관측 스택도 측정 대상에서 떼어낸다:
+#   "CPU가 병목"이라는 결론이 나왔을 때 그게 monolith 때문인지
+#   Grafana 때문인지 구분할 수 없으면 측정이 무의미하다.
+# Prometheus는 타겟 2개를 5초마다 긁을 뿐이라 loadgen에 얹어도 부하가 거의 없다.
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: keeping-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.generated.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      # 러닝 구간을 나중에 query_range로 덤프해야 하므로 보존기간을 넉넉히
+      - '--storage.tsdb.retention.time=30d'
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: keeping-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  prometheus_data:
+  grafana_data:

@@ -9,7 +9,9 @@ import lombok.*;
 @AllArgsConstructor
 @Builder
 @JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder({"pin"})
+@JsonPropertyOrder({"pin", "pinToken"})
 public class CanonicalApprove {
-    private String pin;
+  private String pin;
+  /** 토큰 경로에서는 토큰 문자열 자체를 정규화 대상으로 포함 */
+  private String pinToken;
 }

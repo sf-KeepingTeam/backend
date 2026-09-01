@@ -15,183 +15,176 @@ import com.ssafy.keeping.global.exception.CustomException;
 import com.ssafy.keeping.global.exception.constants.ErrorCode;
 import com.ssafy.keeping.global.s3.service.ImageService;
 import com.ssafy.keeping.global.util.TxUtils;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.util.List;
 import java.util.Objects;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class StoreService {
-    private final StoreRepository storeRepository;
-    private final OwnerRepository ownerRepository;
-    private final WalletStoreBalanceRepository balanceRepository;
-    private final ImageService imageService;
-    private final QrServiceWebhookPublisher webhookPublisher;
+  private final StoreRepository storeRepository;
+  private final OwnerRepository ownerRepository;
+  private final WalletStoreBalanceRepository balanceRepository;
+  private final ImageService imageService;
+  private final QrServiceWebhookPublisher webhookPublisher;
 
-    @Transactional
-    public StoreResponseDto createStore(Long ownerId, StoreRequestDto requestDto) {
-        Owner owner = validOwner(ownerId);
-        String taxIdNumber = requestDto.getTaxIdNumber();
-        String address = requestDto.getAddress();
+  @Transactional
+  public StoreResponseDto createStore(Long ownerId, StoreRequestDto requestDto) {
+    Owner owner = validOwner(ownerId);
+    String taxIdNumber = requestDto.getTaxIdNumber();
+    String address = requestDto.getAddress();
 
-        boolean exists = storeRepository.existsByTaxIdNumberAndAddress(taxIdNumber, address);
-        if (exists) {
-            throw new CustomException(ErrorCode.STORE_ALREADY_EXISTS);
-        }
-
-        // 이미지 파일 업로드
-        String imgUrl = imageService.uploadImage((requestDto.getImgFile()), "store");
-        if(imgUrl == null || imgUrl.isEmpty()) {
-            throw new CustomException(ErrorCode.BAD_REQUEST);
-        }
-
-        // 가게 생성 (merchantId는 자동 생성되는 storeId를 사용하거나 제거)
-        Store store = Store.builder()
-                .owner(owner)
-                .taxIdNumber(requestDto.getTaxIdNumber())
-                .storeName(requestDto.getStoreName())
-                .address(requestDto.getAddress())
-                .phoneNumber(requestDto.getPhoneNumber())
-                .category(requestDto.getCategory())
-                .description(requestDto.getDescription())
-                .storeStatus(StoreStatus.ACTIVE)
-                .imgUrl(imgUrl)
-                .build();
-
-        store = storeRepository.save(store);
-        log.info("가게 등록 완료 - storeId: {}, storeName: {}, ownerId: {}",
-                store.getStoreId(), store.getStoreName(), ownerId);
-
-        // 트랜잭션 커밋 성공 후에만 캐시 갱신 webhook 발행
-        final Store committed = store;
-        TxUtils.afterCommit(() -> webhookPublisher.publishStoreUpdate(committed));
-
-        return StoreResponseDto.fromEntity(store);
+    boolean exists = storeRepository.existsByTaxIdNumberAndAddress(taxIdNumber, address);
+    if (exists) {
+      throw new CustomException(ErrorCode.STORE_ALREADY_EXISTS);
     }
 
-    @Transactional
-    public StoreResponseDto editStore(Long storeId, Long ownerId, StoreEditRequestDto requestDto) {
-        Owner owner = validOwner(ownerId);
-        Store store = validStore(storeId);
-        if (!store.getOwner().getOwnerId().equals(owner.getOwnerId()))
-            throw new CustomException(ErrorCode.OWNER_NOT_MATCH);
-
-        if (!Objects.equals(store.getStoreStatus(), StoreStatus.ACTIVE)) {
-            throw new CustomException(ErrorCode.STORE_INVALID);
-        }
-
-        String editImgUrl = imageService.updateProfileImage(store.getImgUrl(), requestDto.getImgFile());
-        if(editImgUrl == null || editImgUrl.isEmpty()) {
-            throw new CustomException(ErrorCode.IMAGE_UPDATE_ERROR);
-        }
-
-        String taxId = store.getTaxIdNumber();
-        String address = requestDto.getAddress();
-
-        boolean exists = storeRepository.existsByTaxIdNumberAndAddress(taxId, address);
-        if (exists) {
-            throw new CustomException(ErrorCode.STORE_ALREADY_EXISTS);
-        }
-
-        store.patchStore(requestDto, editImgUrl);
-
-        Store saved = storeRepository.save(store);
-
-        // 트랜잭션 커밋 성공 후에만 캐시 갱신 webhook 발행
-        TxUtils.afterCommit(() -> webhookPublisher.publishStoreUpdate(saved));
-
-        return StoreResponseDto.fromEntity(saved);
+    // 이미지 파일 업로드
+    String imgUrl = imageService.uploadImage((requestDto.getImgFile()), "store");
+    if (imgUrl == null || imgUrl.isEmpty()) {
+      throw new CustomException(ErrorCode.BAD_REQUEST);
     }
 
-    @Transactional
-    public StoreResponseDto deleteStore(Long storeId, Long ownerId) {
-        Owner owner = validOwner(ownerId);
-        Store store = validStore(storeId);
+    // 가게 생성 (merchantId는 자동 생성되는 storeId를 사용하거나 제거)
+    Store store =
+        Store.builder()
+            .owner(owner)
+            .taxIdNumber(requestDto.getTaxIdNumber())
+            .storeName(requestDto.getStoreName())
+            .address(requestDto.getAddress())
+            .phoneNumber(requestDto.getPhoneNumber())
+            .category(requestDto.getCategory())
+            .description(requestDto.getDescription())
+            .storeStatus(StoreStatus.ACTIVE)
+            .imgUrl(imgUrl)
+            .build();
 
-        if (!store.getOwner().getOwnerId().equals(owner.getOwnerId()))
-            throw new CustomException(ErrorCode.OWNER_NOT_MATCH);
+    store = storeRepository.save(store);
+    log.info(
+        "가게 등록 완료 - storeId: {}, storeName: {}, ownerId: {}",
+        store.getStoreId(),
+        store.getStoreName(),
+        ownerId);
 
-        boolean hasPositive = balanceRepository
-                .existsPositiveBalanceForStoreWithLock(storeId);
+    // 트랜잭션 커밋 성공 후에만 캐시 갱신 webhook 발행
+    final Store committed = store;
+    TxUtils.afterCommit(() -> webhookPublisher.publishStoreUpdate(committed));
 
-        StoreStatus status = hasPositive ? StoreStatus.SUSPENDED : StoreStatus.DELETED;
-        store.deleteStore(status);
+    return StoreResponseDto.fromEntity(store);
+  }
 
-        Store saved = storeRepository.save(store);
+  @Transactional
+  public StoreResponseDto editStore(Long storeId, Long ownerId, StoreEditRequestDto requestDto) {
+    Owner owner = validOwner(ownerId);
+    Store store = validStore(storeId);
+    if (!store.getOwner().getOwnerId().equals(owner.getOwnerId()))
+      throw new CustomException(ErrorCode.OWNER_NOT_MATCH);
 
-        // 트랜잭션 커밋 성공 후에만 캐시 삭제 webhook 발행
-        TxUtils.afterCommit(() -> webhookPublisher.publishStoreDelete(storeId));
-
-        return StoreResponseDto.fromEntity(saved);
+    if (!Objects.equals(store.getStoreStatus(), StoreStatus.ACTIVE)) {
+      throw new CustomException(ErrorCode.STORE_INVALID);
     }
 
-    /**
-     * 전체 가게 조회
-     */
-    public List<StorePublicDto> getAllStore() {
-        return storeRepository.findPublicAllApprovedStore(StoreStatus.ACTIVE);
+    String editImgUrl = imageService.updateProfileImage(store.getImgUrl(), requestDto.getImgFile());
+    if (editImgUrl == null || editImgUrl.isEmpty()) {
+      throw new CustomException(ErrorCode.IMAGE_UPDATE_ERROR);
     }
 
-    /**
-     * 가게 상세 조회
-     */
-    public StorePublicDto getStoreByStoreId(Long storeId) {
-        return storeRepository.findPublicById(storeId, StoreStatus.ACTIVE).orElseThrow(
-                () -> new CustomException(ErrorCode.STORE_NOT_FOUND));
+    String taxId = store.getTaxIdNumber();
+    String address = requestDto.getAddress();
+
+    boolean exists = storeRepository.existsByTaxIdNumberAndAddress(taxId, address);
+    if (exists) {
+      throw new CustomException(ErrorCode.STORE_ALREADY_EXISTS);
     }
 
-    /**
-     * 카테고리별 가게 조회
-     */
-    public List<StorePublicDto> getAllStoreByCategory(String categoryName) {
-        String category = categoryName == null ? "" : categoryName.trim();
-        if (category.isEmpty()) {
-            return storeRepository.findPublicAllApprovedStore(StoreStatus.ACTIVE);
-        }
+    store.patchStore(requestDto, editImgUrl);
 
-        return storeRepository.findPublicAllByCategory(category, StoreStatus.ACTIVE);
+    Store saved = storeRepository.save(store);
+
+    // 트랜잭션 커밋 성공 후에만 캐시 갱신 webhook 발행
+    TxUtils.afterCommit(() -> webhookPublisher.publishStoreUpdate(saved));
+
+    return StoreResponseDto.fromEntity(saved);
+  }
+
+  @Transactional
+  public StoreResponseDto deleteStore(Long storeId, Long ownerId) {
+    Owner owner = validOwner(ownerId);
+    Store store = validStore(storeId);
+
+    if (!store.getOwner().getOwnerId().equals(owner.getOwnerId()))
+      throw new CustomException(ErrorCode.OWNER_NOT_MATCH);
+
+    boolean hasPositive = balanceRepository.existsPositiveBalanceForStoreWithLock(storeId);
+
+    StoreStatus status = hasPositive ? StoreStatus.SUSPENDED : StoreStatus.DELETED;
+    store.deleteStore(status);
+
+    Store saved = storeRepository.save(store);
+
+    // 트랜잭션 커밋 성공 후에만 캐시 삭제 webhook 발행
+    TxUtils.afterCommit(() -> webhookPublisher.publishStoreDelete(storeId));
+
+    return StoreResponseDto.fromEntity(saved);
+  }
+
+  /** 전체 가게 조회 */
+  public List<StorePublicDto> getAllStore() {
+    return storeRepository.findPublicAllApprovedStore(StoreStatus.ACTIVE);
+  }
+
+  /** 가게 상세 조회 (TTL 300s 캐시됨 — CACHE_PROVIDER=caffeine|redis 시 활성) */
+  @Cacheable(value = "store", key = "#storeId")
+  public StorePublicDto getStoreByStoreId(Long storeId) {
+    return storeRepository
+        .findPublicById(storeId, StoreStatus.ACTIVE)
+        .orElseThrow(() -> new CustomException(ErrorCode.STORE_NOT_FOUND));
+  }
+
+  /** 카테고리별 가게 조회 */
+  public List<StorePublicDto> getAllStoreByCategory(String categoryName) {
+    String category = categoryName == null ? "" : categoryName.trim();
+    if (category.isEmpty()) {
+      return storeRepository.findPublicAllApprovedStore(StoreStatus.ACTIVE);
     }
 
-    /**
-     * 가게명으로 검색
-     */
-    public List<StorePublicDto> getStoreByStoreName(String storeName) {
-        String name = storeName == null ? "" : storeName.trim();
-        if (name.isEmpty()) {
-            return storeRepository.findPublicAllApprovedStore(StoreStatus.ACTIVE);
-        }
-        name = name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+    return storeRepository.findPublicAllByCategory(category, StoreStatus.ACTIVE);
+  }
 
-        return storeRepository.findPublicAllSimilarityByName(name, StoreStatus.ACTIVE);
+  /** 가게명으로 검색 */
+  public List<StorePublicDto> getStoreByStoreName(String storeName) {
+    String name = storeName == null ? "" : storeName.trim();
+    if (name.isEmpty()) {
+      return storeRepository.findPublicAllApprovedStore(StoreStatus.ACTIVE);
     }
+    name = name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
 
-    private Owner validOwner(Long ownerId) {
-        return ownerRepository.findById(ownerId).orElseThrow(
-                () -> new CustomException(ErrorCode.OWNER_NOT_FOUND)
-        );
-    }
+    return storeRepository.findPublicAllSimilarityByName(name, StoreStatus.ACTIVE);
+  }
 
-    private Store validStore(Long storeId) {
-        return storeRepository.findById(storeId).orElseThrow(
-                () -> new CustomException(ErrorCode.STORE_NOT_FOUND)
-        );
-    }
+  private Owner validOwner(Long ownerId) {
+    return ownerRepository
+        .findById(ownerId)
+        .orElseThrow(() -> new CustomException(ErrorCode.OWNER_NOT_FOUND));
+  }
 
-    /**
-     * 점주의 모든 매장 조회
-     */
-    public List<StoreResponseDto> getMyStores(Long ownerId) {
-        validOwner(ownerId);
+  private Store validStore(Long storeId) {
+    return storeRepository
+        .findById(storeId)
+        .orElseThrow(() -> new CustomException(ErrorCode.STORE_NOT_FOUND));
+  }
 
-        List<Store> stores = storeRepository.findByOwnerOwnerIdAndDeletedAtIsNull(ownerId);
+  /** 점주의 모든 매장 조회 */
+  public List<StoreResponseDto> getMyStores(Long ownerId) {
+    validOwner(ownerId);
 
-        return stores.stream()
-                .map(StoreResponseDto::fromEntity)
-                .toList();
-    }
+    List<Store> stores = storeRepository.findByOwnerOwnerIdAndDeletedAtIsNull(ownerId);
+
+    return stores.stream().map(StoreResponseDto::fromEntity).toList();
+  }
 }
