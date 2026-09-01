@@ -60,7 +60,7 @@ class IntentWaitRegistryTest {
         scheduler = Executors.newSingleThreadScheduledExecutor();
         meterRegistry = new SimpleMeterRegistry();
 
-        registry = new IntentWaitRegistry(redisStore, scheduler, meterRegistry);
+        registry = new IntentWaitRegistry(redisStore, scheduler, meterRegistry, 200L);
 
         // 기본 stub: register() 직후 즉시 해소 없음 (initiate-first 케이스 아님)
         when(redisStore.getIntentArrivalDirect(any())).thenReturn(Optional.empty());
@@ -404,37 +404,37 @@ class IntentWaitRegistryTest {
     class RaceConditionTest {
 
         @Test
-        @DisplayName("구 result 교체 후 신규 waiter 가 resolve 되어야 한다 (게이지 음수 없음)")
+        @DisplayName("구 entry 의 onCompletion 이 신규 waiter 를 지우지 않는다 (2-arg remove 검증)")
         @SuppressWarnings("unchecked")
         void old_completion_does_not_evict_new_waiter() {
-            // Given: 첫 번째 waiter 등록
+            // Given 1: 첫 번째 waiter 등록 → oldEntry 캡처
             DeferredResult<ResponseEntity<ApiResponse<IntentArrivalResponse>>> oldResult =
-                    new DeferredResult<>(25_000L);
+                    new DeferredResult<>(10L);
             registry.register("tok-race", oldResult, 10L);
-            assertThat(registry.activeWaiters()).isEqualTo(1);
+            IntentWaitRegistry.WaiterEntry oldEntry = registry.peekWaiter("tok-race");
+            assertThat(oldEntry).isNotNull();
 
-            // 두 번째 waiter 등록 (타임아웃 재시도 시나리오 — 동일 tokenId 로 재등록)
+            // Given 2: 동일 tokenId 로 두 번째 waiter 등록 (타임아웃 재시도 시나리오)
             DeferredResult<ResponseEntity<ApiResponse<IntentArrivalResponse>>> newResult =
                     new DeferredResult<>(25_000L);
             registry.register("tok-race", newResult, 10L);
 
-            // When: resolve() 호출 — newResult 가 맵에 있으므로 newResult 만 해소되어야 한다.
-            // 2-arg remove(tokenId, entry) 덕분에 구 entry 의 onCompletion 이 뒤늦게 실행돼도
-            // 신규 entry 를 지우지 않는다.
+            // When: 구 entry 의 onCompletion 콜백을 직접 재현
+            // (Spring MVC AsyncWebRequest 없이도 경쟁조건 경로를 정확히 시뮬레이션)
+            registry.onWaiterCompleted("tok-race", oldEntry);
+
+            // Then 1: 신규 waiter 가 맵에 남아 있어야 한다 (2-arg remove 가 oldEntry 불일치로 no-op)
+            assertThat(registry.peekWaiter("tok-race")).isNotNull();
+
+            // When 2: resolve() — 신규 waiter 에 200 OK 설정
             UUID intentId = UUID.randomUUID();
             registry.resolve("tok-race", intentId, 10L, 5000L, "테스트매장", List.of());
 
-            // Then: newResult 가 200 OK 로 해소되었다.
-            // DeferredResult.onCompletion() 은 Spring MVC AsyncWebRequest 가 트리거하므로
-            // 단위 테스트에서는 호출되지 않는다. hasResult() / getResult() 로 직접 확인한다.
+            // Then 2: newResult 가 200 OK 로 해소되었다
             assertThat(newResult.hasResult()).isTrue();
             ResponseEntity<ApiResponse<IntentArrivalResponse>> resp =
                     (ResponseEntity<ApiResponse<IntentArrivalResponse>>) newResult.getResult();
-            assertThat(resp).isNotNull();
             assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
-
-            // 구 result 는 resolve 대상이 아니었으므로 결과 없음
-            assertThat(oldResult.hasResult()).isFalse();
 
             // 게이지 값이 음수가 되지 않아야 한다
             double activeGauge = meterRegistry.get("intent_wait_active").gauge().value();

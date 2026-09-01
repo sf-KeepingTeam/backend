@@ -15,6 +15,7 @@ import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -25,6 +26,9 @@ public class QrTokenService {
   private final QrTokenRedisRepository qrTokenRepository;
   private final QrScanSessionRepository scanSessionRepository;
   private final QrFlowRedisStore qrFlowRedisStore;
+
+  @Value("${qr.intent-wait.enabled:false}")
+  private boolean intentWaitEnabled;
 
   private static final int TTL_SECONDS = 10;
   private static final int SESSION_TTL_SECONDS = 180; // 3분
@@ -124,12 +128,15 @@ public class QrTokenService {
 
     // 롱폴링 지원: s2t 역참조 키 + active 마킹 저장
     // 실패해도 결제 플로우 중단 금지 — 폴링 fallback 이 없어질 뿐
-    try {
-      qrFlowRedisStore.saveSessionToTokenMapping(sessionToken, tokenId);
-      qrFlowRedisStore.saveActiveToken(tokenId);
-      log.debug("[QR_FLOW] s2t + active 저장: tokenId={}", tokenId);
-    } catch (Exception e) {
-      log.warn("[QR_FLOW] 보조 키 저장 실패 — tokenId={} error={}", tokenId, e.getMessage());
+    // intentWaitEnabled=false 면 A/B 베이스라인 순도 보장을 위해 Redis 호출 전체 생략
+    if (intentWaitEnabled) {
+      try {
+        qrFlowRedisStore.saveSessionToTokenMapping(sessionToken, tokenId);
+        qrFlowRedisStore.saveActiveToken(tokenId);
+        log.debug("[QR_FLOW] s2t + active 저장: tokenId={}", tokenId);
+      } catch (Exception e) {
+        log.warn("[QR_FLOW] 보조 키 저장 실패 — tokenId={} error={}", tokenId, e.getMessage());
+      }
     }
 
     return QrScanResponse.from(session, SESSION_TTL_SECONDS);

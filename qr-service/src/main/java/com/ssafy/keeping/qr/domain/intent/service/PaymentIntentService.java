@@ -76,6 +76,9 @@ public class PaymentIntentService {
   private final PaymentOutboxRepository outboxRepository;
   private final QrFlowRedisStore qrFlowRedisStore;
 
+  @org.springframework.beans.factory.annotation.Value("${qr.intent-wait.enabled:false}")
+  private boolean intentWaitEnabled;
+
   public PaymentIntentService(
       PaymentIntentRepository intentRepository,
       PaymentIntentItemRepository itemRepository,
@@ -269,21 +272,24 @@ public class PaymentIntentService {
 
     // QR 플로우 롱폴링 — initiate 커밋 후 AFTER_COMMIT 리스너가 Redis 저장 + waiter 해소
     // 절대 건드리지 않는 것: TX 경계, 기존 PaymentRequestedEvent 블록
-    try {
-      String tokenIdForFlow = qrFlowRedisStore.getTokenIdForSession(sessionToken).orElse(null);
-      if (tokenIdForFlow != null) {
-        eventPublisher.publishEvent(new QrFlowIntentReadyEvent(
-            tokenIdForFlow,
-            intent.getPublicId(),
-            session.getCustomerId(),
-            intent.getStoreId(),
-            intent.getAmount(),
-            itemViews));
-        log.debug("[QR_FLOW] QrFlowIntentReadyEvent 발행 — tokenId={}", tokenIdForFlow);
+    // intentWaitEnabled=false 면 A/B 베이스라인 순도 보장을 위해 Redis 호출 전체 생략
+    if (intentWaitEnabled) {
+      try {
+        String tokenIdForFlow = qrFlowRedisStore.getTokenIdForSession(sessionToken).orElse(null);
+        if (tokenIdForFlow != null) {
+          eventPublisher.publishEvent(new QrFlowIntentReadyEvent(
+              tokenIdForFlow,
+              intent.getPublicId(),
+              session.getCustomerId(),
+              intent.getStoreId(),
+              intent.getAmount(),
+              itemViews));
+          log.debug("[QR_FLOW] QrFlowIntentReadyEvent 발행 — tokenId={}", tokenIdForFlow);
+        }
+      } catch (Exception e) {
+        log.warn("[QR_FLOW] s2t 조회/이벤트 발행 실패 — sessionToken={} error={}",
+            sessionToken, e.getMessage());
       }
-    } catch (Exception e) {
-      log.warn("[QR_FLOW] s2t 조회/이벤트 발행 실패 — sessionToken={} error={}",
-          sessionToken, e.getMessage());
     }
 
     // 결제 요청 알림
@@ -746,6 +752,9 @@ public class PaymentIntentService {
    * i2t 키로 tokenId 를 역참조한 뒤 intent + active 키를 함께 DEL 한다.
    */
   private void cleanupQrFlowKeys(UUID intentPublicId) {
+    if (!intentWaitEnabled) {
+      return;
+    }
     try {
       qrFlowRedisStore.getTokenIdForIntent(intentPublicId.toString()).ifPresent(tokenId -> {
         qrFlowRedisStore.deleteIntentArrivalKeys(tokenId);

@@ -18,6 +18,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -46,7 +47,7 @@ import org.springframework.web.context.request.async.DeferredResult;
 @ConditionalOnProperty(name = "qr.intent-wait.enabled", havingValue = "true")
 public class IntentWaitRegistry {
 
-    private record WaiterEntry(
+    record WaiterEntry(
             DeferredResult<ResponseEntity<ApiResponse<IntentArrivalResponse>>> result,
             Long expectedCustomerId,
             long startNanos) {}
@@ -56,6 +57,7 @@ public class IntentWaitRegistry {
     private final QrFlowRedisStore qrFlowRedisStore;
     private final ScheduledExecutorService scheduler;
     private final MeterRegistry meterRegistry;
+    private final long pollIntervalMs;
 
     // ── 지표 ─────────────────────────────────────────────────────────
     private final Counter waitRegisteredCounter;
@@ -65,10 +67,12 @@ public class IntentWaitRegistry {
     public IntentWaitRegistry(
             QrFlowRedisStore qrFlowRedisStore,
             @Qualifier("intentWaitScheduler") ScheduledExecutorService scheduler,
-            MeterRegistry meterRegistry) {
+            MeterRegistry meterRegistry,
+            @Value("${qr.intent-wait.poll-interval-ms:200}") long pollIntervalMs) {
         this.qrFlowRedisStore = qrFlowRedisStore;
         this.scheduler = scheduler;
         this.meterRegistry = meterRegistry;
+        this.pollIntervalMs = pollIntervalMs;
         this.waitRegisteredCounter = meterRegistry.counter("intent_wait_registered_total");
         this.waitTimeoutCounter    = meterRegistry.counter("intent_wait_timeout_total");
         meterRegistry.gauge("intent_wait_active", activeWaiterCount);
@@ -76,8 +80,9 @@ public class IntentWaitRegistry {
 
     @PostConstruct
     void startPoller() {
-        scheduler.scheduleAtFixedRate(this::pollPendingWaiters, 200, 200, TimeUnit.MILLISECONDS);
-        log.info("[INTENT_WAIT] 폴러 시작 — 주기 200 ms");
+        scheduler.scheduleAtFixedRate(
+                this::pollPendingWaiters, pollIntervalMs, pollIntervalMs, TimeUnit.MILLISECONDS);
+        log.info("[INTENT_WAIT] 폴러 시작 — 주기 {} ms", pollIntervalMs);
     }
 
     // ── 공개 API ──────────────────────────────────────────────────────
@@ -96,11 +101,7 @@ public class IntentWaitRegistry {
         WaiterEntry entry = new WaiterEntry(result, expectedCustomerId, System.nanoTime());
 
         // 내가 넣은 그 엔트리일 때만 제거 (ConcurrentHashMap 2-arg remove)
-        result.onCompletion(() -> {
-            if (waiters.remove(tokenId, entry)) {
-                activeWaiterCount.decrementAndGet();
-            }
-        });
+        result.onCompletion(() -> onWaiterCompleted(tokenId, entry));
         result.onTimeout(() -> waitTimeoutCounter.increment());
 
         WaiterEntry prev = waiters.put(tokenId, entry);
@@ -120,6 +121,22 @@ public class IntentWaitRegistry {
             log.warn("[INTENT_WAIT] 즉시 해소 Redis 조회 실패 — tokenId={} error={}",
                     tokenId, e.getMessage());
         }
+    }
+
+    /**
+     * DeferredResult 완료 콜백 — 자신이 넣은 엔트리일 때만 맵 정리 + 게이지 감소.
+     *
+     * <p>테스트에서 직접 호출해 Spring MVC 없이 완료 콜백을 재현할 수 있도록 package-private.
+     */
+    void onWaiterCompleted(String tokenId, WaiterEntry entry) {
+        if (waiters.remove(tokenId, entry)) {
+            activeWaiterCount.decrementAndGet();
+        }
+    }
+
+    /** 테스트용 — 현재 맵에 저장된 WaiterEntry 를 반환 (없으면 null). */
+    WaiterEntry peekWaiter(String tokenId) {
+        return waiters.get(tokenId);
     }
 
     /**

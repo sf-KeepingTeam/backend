@@ -14,6 +14,7 @@ import com.ssafy.keeping.qr.security.UserPrincipal;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -29,6 +30,9 @@ public class QrController {
   private final QrFlowRedisStore qrFlowRedisStore;
   /** qr.intent-wait.enabled=false 시 빈이 없으므로 ObjectProvider 로 받는다. */
   private final ObjectProvider<IntentWaitRegistry> intentWaitRegistryProvider;
+
+  @Value("${qr.intent-wait.timeout-ms:25000}")
+  private long intentWaitTimeoutMs;
 
   /** QR 토큰 생성 POST /api/qr */
   @PostMapping
@@ -104,9 +108,9 @@ public class QrController {
       return immediate;
     }
 
-    // 25 초 타임아웃 → 204 No Content (손님 클라이언트가 재시도)
+    // intentWaitTimeoutMs 타임아웃 → 204 No Content (손님 클라이언트가 재시도)
     DeferredResult<ResponseEntity<ApiResponse<IntentArrivalResponse>>> result =
-        new DeferredResult<>(25_000L, ResponseEntity.noContent().build());
+        new DeferredResult<>(intentWaitTimeoutMs, ResponseEntity.noContent().build());
 
     registry.register(tokenId, result, principal.id());
     return result;
