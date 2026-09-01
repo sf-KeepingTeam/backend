@@ -118,6 +118,13 @@ payment:
     session-token:
       revocation-check: false   # Redis 공유 확인 후 true 로 켬 (기본 false)
 
+# QR 롱폴링 통제변인 (P0-2: 기본 꺼짐 — 같은 jar 로 OFF/ON 러닝 가능)
+qr:
+  intent-wait:
+    enabled: ${QR_INTENT_WAIT_ENABLED:false}
+    timeout-ms: ${QR_INTENT_WAIT_TIMEOUT_MS:25000}
+    poll-interval-ms: ${QR_INTENT_WAIT_POLL_INTERVAL_MS:200}
+
 # 로드테스트 백도어 (테스트용)
 loadtest:
   backdoor:

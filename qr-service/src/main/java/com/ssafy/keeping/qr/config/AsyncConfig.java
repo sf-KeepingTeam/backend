@@ -7,9 +7,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -32,6 +34,15 @@ public class AsyncConfig {
     //        → 알림 유실 41.3% 의 원인은 이 세 값이다.
     //  ⚠️ core 와 max 를 함께 올려야 의미가 있다. ThreadPoolExecutor 는
     //     core 를 넘으면 큐부터 채우고, 큐가 꽉 차야 max 까지 확장한다.
+    @Value("${qr.intent-wait.enabled:false}")
+    private boolean intentWaitEnabled;
+
+    @Value("${qr.intent-wait.timeout-ms:25000}")
+    private long intentWaitTimeoutMs;
+
+    @Value("${qr.intent-wait.poll-interval-ms:200}")
+    private long intentWaitPollIntervalMs;
+
     @Value("${notification.executor.core-size:2}")
     private int notifCoreSize;
 
@@ -74,9 +85,15 @@ public class AsyncConfig {
      * 롱폴링 대기자 폴러 전용 스케줄러.
      *
      * <p>기존 {@code @Scheduled} 스레드(Spring 기본 1개, 복구 스케줄러 점유)와 분리.
-     * core 2 — 한 스레드가 느린 MGET 을 처리하는 동안 다른 스레드가 다음 사이클을 받는다.
+     * core=2 — {@code scheduleAtFixedRate} 는 동일 태스크를 직렬로 실행하므로
+     * 사이클 병렬화는 일어나지 않는다. 2번째 스레드는 GC pause 등으로 첫 스레드가
+     * 지연될 때 다음 사이클 실행에 사용된다.
+     *
+     * <p>활성화: {@code qr.intent-wait.enabled=true} 일 때만 빈이 등록된다.
      */
     @Bean("intentWaitScheduler")
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+            name = "qr.intent-wait.enabled", havingValue = "true")
     public ScheduledExecutorService intentWaitScheduler() {
         return Executors.newScheduledThreadPool(2,
                 r -> {
@@ -84,5 +101,12 @@ public class AsyncConfig {
                     t.setDaemon(true);
                     return t;
                 });
+    }
+
+    /** 기동 시 항상 롱폴링 활성화 여부를 로그에 남긴다 (실험자 확인용). */
+    @EventListener(ApplicationReadyEvent.class)
+    public void logIntentWaitStatus() {
+        log.info("[INTENT_WAIT] enabled={} timeout={}ms pollInterval={}ms",
+                intentWaitEnabled, intentWaitTimeoutMs, intentWaitPollIntervalMs);
     }
 }

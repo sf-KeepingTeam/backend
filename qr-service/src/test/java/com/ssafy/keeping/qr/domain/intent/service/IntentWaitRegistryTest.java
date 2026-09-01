@@ -9,15 +9,10 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.ssafy.keeping.qr.acl.StoreClient;
-import com.ssafy.keeping.qr.acl.dto.StoreResponse;
 import com.ssafy.keeping.qr.common.response.ApiResponse;
+import com.ssafy.keeping.qr.domain.intent.dto.IntentArrivalCacheValue;
 import com.ssafy.keeping.qr.domain.intent.dto.IntentArrivalResponse;
 import com.ssafy.keeping.qr.domain.intent.dto.PaymentIntentItemView;
-import com.ssafy.keeping.qr.domain.intent.model.PaymentIntent;
-import com.ssafy.keeping.qr.domain.intent.model.PaymentIntentItem;
-import com.ssafy.keeping.qr.domain.intent.repository.PaymentIntentItemRepository;
-import com.ssafy.keeping.qr.domain.intent.repository.PaymentIntentRepository;
 import com.ssafy.keeping.qr.domain.qr.repository.QrFlowRedisStore;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.Arrays;
@@ -38,25 +33,23 @@ import org.springframework.web.context.request.async.DeferredResult;
 /**
  * GET /api/qr/{tokenId}/intent 롱폴링 등록·해소 단위 테스트.
  *
- * <p>검증 게이트 G-2 ~ G-9:
+ * <p>검증 게이트 G-2 ~ G-10:
  * <ul>
  *   <li>G-1: active 키 없음 → 404 즉시 반환 (QrController 계층 — 컨트롤러 통합 테스트로 분리)
  *   <li>G-2: register() — waiter 등록 + 카운터 증가
  *   <li>G-3: push path — resolve() 호출 시 DeferredResult 즉시 해소 (200 OK)
- *   <li>G-4: poll path — pollPendingWaiters() + MGET → resolveFromDb
+ *   <li>G-4: poll path — pollPendingWaiters() + MGET → resolveFromCache (DB 왕복 0)
  *   <li>G-5: initiate-first — register() 직후 Redis에 이미 intent 도착 → 즉시 해소
  *   <li>G-6: customerId 불일치 → 403 Forbidden
  *   <li>G-7: 타임아웃 카운터 동작
  *   <li>G-8: Redis 장애 내성 — warn 로그만, 플로우 계속
  *   <li>G-9: 실제 25 s DeferredResult 타임아웃 (@Disabled — 실환경 검증용)
+ *   <li>G-10: P0-1 경쟁조건 — 타임아웃 onCompletion 이 신규 waiter 를 지우지 않는다
  * </ul>
  */
 class IntentWaitRegistryTest {
 
     private QrFlowRedisStore redisStore;
-    private PaymentIntentRepository intentRepository;
-    private PaymentIntentItemRepository itemRepository;
-    private StoreClient storeClient;
     private ScheduledExecutorService scheduler;
     private SimpleMeterRegistry meterRegistry;
     private IntentWaitRegistry registry;
@@ -64,15 +57,10 @@ class IntentWaitRegistryTest {
     @BeforeEach
     void setUp() {
         redisStore = mock(QrFlowRedisStore.class);
-        intentRepository = mock(PaymentIntentRepository.class);
-        itemRepository = mock(PaymentIntentItemRepository.class);
-        storeClient = mock(StoreClient.class);
         scheduler = Executors.newSingleThreadScheduledExecutor();
         meterRegistry = new SimpleMeterRegistry();
 
-        registry = new IntentWaitRegistry(
-                redisStore, intentRepository, itemRepository,
-                storeClient, scheduler, meterRegistry);
+        registry = new IntentWaitRegistry(redisStore, scheduler, meterRegistry);
 
         // 기본 stub: register() 직후 즉시 해소 없음 (initiate-first 케이스 아님)
         when(redisStore.getIntentArrivalDirect(any())).thenReturn(Optional.empty());
@@ -125,10 +113,6 @@ class IntentWaitRegistryTest {
         @Test
         @DisplayName("waiter 등록 후 resolve() 호출 시 200 OK 응답이 설정된다")
         void resolve_sets_200_on_registered_waiter() {
-            StoreResponse store = new StoreResponse();
-            store.setStoreName("테스트매장");
-            when(storeClient.getStore(99L)).thenReturn(Optional.of(store));
-
             DeferredResult<ResponseEntity<ApiResponse<IntentArrivalResponse>>> result =
                     new DeferredResult<>(25_000L);
             registry.register("tok-push", result, 10L);
@@ -136,7 +120,7 @@ class IntentWaitRegistryTest {
             PaymentIntentItemView item = PaymentIntentItemView.builder()
                     .menuId(1L).name("아메리카노").unitPrice(4000L).quantity(1).lineTotal(4000L)
                     .build();
-            registry.resolve("tok-push", UUID.randomUUID(), 10L, 99L, 4000L, List.of(item));
+            registry.resolve("tok-push", UUID.randomUUID(), 10L, 4000L, "테스트매장", List.of(item));
 
             assertThat(result.hasResult()).isTrue();
             @SuppressWarnings("unchecked")
@@ -147,68 +131,61 @@ class IntentWaitRegistryTest {
         }
 
         @Test
-        @DisplayName("resolve() 후 resolved_total 카운터가 증가한다")
+        @DisplayName("resolve() 후 resolved_total{path=push} 카운터가 증가한다")
         void resolve_increments_resolved_counter() {
-            when(storeClient.getStore(any())).thenReturn(Optional.empty());
-
             DeferredResult<ResponseEntity<ApiResponse<IntentArrivalResponse>>> result =
                     new DeferredResult<>(25_000L);
             registry.register("tok-cnt", result, 10L);
 
-            registry.resolve("tok-cnt", UUID.randomUUID(), 10L, 1L, 1000L, List.of());
+            registry.resolve("tok-cnt", UUID.randomUUID(), 10L, 1000L, "매장", List.of());
 
-            assertThat(meterRegistry.counter("intent_wait_resolved_total").count()).isEqualTo(1.0);
+            assertThat(meterRegistry.counter("intent_wait_resolved_total", "path", "push").count())
+                    .isEqualTo(1.0);
         }
 
         @Test
         @DisplayName("waiter 없는 tokenId 에 resolve() 호출 시 no-op")
         void resolve_noop_when_no_waiter() {
-            registry.resolve("no-waiter", UUID.randomUUID(), 10L, 1L, 1000L, List.of());
+            registry.resolve("no-waiter", UUID.randomUUID(), 10L, 1000L, "매장", List.of());
 
-            assertThat(meterRegistry.counter("intent_wait_resolved_total").count()).isEqualTo(0.0);
+            assertThat(meterRegistry.counter("intent_wait_resolved_total", "path", "push").count())
+                    .isEqualTo(0.0);
         }
 
         @Test
-        @DisplayName("resolve() 후 같은 tokenId 에 다시 resolve() 해도 카운터는 1이다 (AtomicBoolean 중복 방지)")
+        @DisplayName("resolve() 후 같은 tokenId 에 다시 resolve() 해도 카운터는 1이다 (중복 방지)")
         void resolve_twice_counts_only_once() {
-            when(storeClient.getStore(any())).thenReturn(Optional.empty());
-
             DeferredResult<ResponseEntity<ApiResponse<IntentArrivalResponse>>> result =
                     new DeferredResult<>(25_000L);
             registry.register("tok-dup", result, 10L);
 
             UUID intentId = UUID.randomUUID();
-            registry.resolve("tok-dup", intentId, 10L, 1L, 1000L, List.of());
-            registry.resolve("tok-dup", intentId, 10L, 1L, 1000L, List.of()); // 두 번째는 no-op
+            registry.resolve("tok-dup", intentId, 10L, 1000L, "매장", List.of());
+            registry.resolve("tok-dup", intentId, 10L, 1000L, "매장", List.of()); // 두 번째는 no-op
 
-            assertThat(meterRegistry.counter("intent_wait_resolved_total").count()).isEqualTo(1.0);
+            assertThat(meterRegistry.counter("intent_wait_resolved_total", "path", "push").count())
+                    .isEqualTo(1.0);
         }
     }
 
     // ── G-4: poll path ─────────────────────────────────────────────────────
 
     @Nested
-    @DisplayName("G-4: poll path — MGET → resolveFromDb")
+    @DisplayName("G-4: poll path — MGET → resolveFromCache (DB 왕복 0)")
     class PollPathTest {
 
         @Test
-        @DisplayName("pollPendingWaiters: MGET이 값을 반환하면 DB 조회 후 200 OK 설정")
-        void poll_resolves_waiter_via_db() {
+        @DisplayName("pollPendingWaiters: MGET이 캐시 값을 반환하면 200 OK 설정 (DB 조회 없음)")
+        void poll_resolves_waiter_via_cache() {
             UUID intentId = UUID.randomUUID();
-            StoreResponse store = new StoreResponse();
-            store.setStoreName("폴매장");
-            when(storeClient.getStore(99L)).thenReturn(Optional.of(store));
+            IntentArrivalCacheValue cached = new IntentArrivalCacheValue(
+                    intentId.toString(), 55L, 2000L, "폴매장", List.of());
 
             DeferredResult<ResponseEntity<ApiResponse<IntentArrivalResponse>>> result =
                     new DeferredResult<>(25_000L);
             registry.register("tok-poll", result, 55L);
 
-            when(redisStore.mgetIntentArrival(anyList()))
-                    .thenReturn(List.of(intentId + ":55"));
-
-            PaymentIntent intent = buildIntent(intentId, 1L, 2000L);
-            when(intentRepository.findByPublicId(intentId)).thenReturn(Optional.of(intent));
-            when(itemRepository.findByIntent_IntentId(1L)).thenReturn(List.of());
+            when(redisStore.mgetIntentArrival(anyList())).thenReturn(List.of(cached));
 
             registry.pollPendingWaiters();
 
@@ -217,6 +194,7 @@ class IntentWaitRegistryTest {
             ResponseEntity<ApiResponse<IntentArrivalResponse>> resp =
                     (ResponseEntity<ApiResponse<IntentArrivalResponse>>) result.getResult();
             assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(resp.getBody().getData().storeName()).isEqualTo("폴매장");
         }
 
         @Test
@@ -228,12 +206,11 @@ class IntentWaitRegistryTest {
 
             // List.of()는 null 요소를 허용하지 않으므로 Arrays.asList 사용
             when(redisStore.mgetIntentArrival(anyList()))
-                    .thenReturn(Arrays.asList((String) null));
+                    .thenReturn(Arrays.asList((IntentArrivalCacheValue) null));
 
             registry.pollPendingWaiters();
 
             assertThat(result.hasResult()).isFalse();
-            verify(intentRepository, never()).findByPublicId(any());
         }
 
         @Test
@@ -255,13 +232,10 @@ class IntentWaitRegistryTest {
         @DisplayName("register() 시 Redis에 이미 intent 있으면 폴링 200 ms 없이 즉시 해소된다")
         void register_resolves_immediately_when_intent_already_in_redis() {
             UUID intentId = UUID.randomUUID();
+            IntentArrivalCacheValue cached = new IntentArrivalCacheValue(
+                    intentId.toString(), 77L, 3000L, "즉시매장", List.of());
             when(redisStore.getIntentArrivalDirect("tok-first"))
-                    .thenReturn(Optional.of(intentId + ":77"));
-            when(storeClient.getStore(any())).thenReturn(Optional.empty());
-
-            PaymentIntent intent = buildIntent(intentId, 5L, 3000L);
-            when(intentRepository.findByPublicId(intentId)).thenReturn(Optional.of(intent));
-            when(itemRepository.findByIntent_IntentId(5L)).thenReturn(List.of());
+                    .thenReturn(Optional.of(cached));
 
             DeferredResult<ResponseEntity<ApiResponse<IntentArrivalResponse>>> result =
                     new DeferredResult<>(25_000L);
@@ -272,6 +246,7 @@ class IntentWaitRegistryTest {
             ResponseEntity<ApiResponse<IntentArrivalResponse>> resp =
                     (ResponseEntity<ApiResponse<IntentArrivalResponse>>) result.getResult();
             assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(resp.getBody().getData().storeName()).isEqualTo("즉시매장");
         }
 
         @Test
@@ -300,7 +275,7 @@ class IntentWaitRegistryTest {
                     new DeferredResult<>(25_000L);
             registry.register("tok-403", result, 10L); // expectedCustomerId = 10
 
-            registry.resolve("tok-403", UUID.randomUUID(), 99L /* wrong */, 1L, 1000L, List.of());
+            registry.resolve("tok-403", UUID.randomUUID(), 99L /* wrong */, 1000L, "매장", List.of());
 
             assertThat(result.hasResult()).isTrue();
             @SuppressWarnings("unchecked")
@@ -313,12 +288,14 @@ class IntentWaitRegistryTest {
         @DisplayName("poll path: customerId 불일치 시 403 반환")
         void resolve_returns_403_on_customer_id_mismatch_poll() {
             UUID intentId = UUID.randomUUID();
+            IntentArrivalCacheValue cached = new IntentArrivalCacheValue(
+                    intentId.toString(), 99L /* 불일치 */, 2000L, "매장", List.of());
+
             DeferredResult<ResponseEntity<ApiResponse<IntentArrivalResponse>>> result =
                     new DeferredResult<>(25_000L);
             registry.register("tok-403p", result, 10L); // expectedCustomerId = 10
 
-            when(redisStore.mgetIntentArrival(anyList()))
-                    .thenReturn(List.of(intentId + ":99")); // customerId=99 (불일치)
+            when(redisStore.mgetIntentArrival(anyList())).thenReturn(List.of(cached));
 
             registry.pollPendingWaiters();
 
@@ -343,14 +320,9 @@ class IntentWaitRegistryTest {
                     new DeferredResult<>(25_000L);
             registry.register("tok-to", result, 1L);
 
-            // onTimeout 핸들러를 직접 트리거하여 카운터 동작 검증
-            // (Spring MVC 없이 timeout_total 카운터 증가 경로 확인)
             double before = meterRegistry.counter("intent_wait_timeout_total").count();
-
-            // timeout 핸들러는 Spring MVC AsyncWebRequest가 타임아웃 시 호출한다.
-            // 단위 테스트에서는 registry가 실제로 onTimeout 콜백을 설정했는지 간접 검증:
-            // onTimeout 핸들러를 수동으로 호출하면 카운터가 증가해야 한다.
-            // DeferredResult 내부 콜백에 직접 접근하는 대신, 카운터 자체가 동작하는지 확인.
+            // onTimeout 핸들러는 Spring MVC AsyncWebRequest가 타임아웃 시 호출한다.
+            // 단위 테스트에서는 카운터 자체가 동작하는지 간접 검증.
             meterRegistry.counter("intent_wait_timeout_total").increment();
 
             assertThat(meterRegistry.counter("intent_wait_timeout_total").count())
@@ -425,14 +397,48 @@ class IntentWaitRegistryTest {
         //   → 25 s 후 204 No Content
     }
 
-    // ── 헬퍼 ──────────────────────────────────────────────────────────────────
+    // ── G-10: P0-1 경쟁조건 — 구 result 의 onCompletion 이 신규 waiter 를 지우지 않는다 ──
 
-    private PaymentIntent buildIntent(UUID publicId, Long intentId, Long amount) {
-        return PaymentIntent.builder()
-                .intentId(intentId)
-                .publicId(publicId)
-                .storeId(99L)
-                .amount(amount)
-                .build();
+    @Nested
+    @DisplayName("G-10: P0-1 경쟁조건 — onCompletion 이 신규 waiter 를 지우지 않는다")
+    class RaceConditionTest {
+
+        @Test
+        @DisplayName("구 result 교체 후 신규 waiter 가 resolve 되어야 한다 (게이지 음수 없음)")
+        @SuppressWarnings("unchecked")
+        void old_completion_does_not_evict_new_waiter() {
+            // Given: 첫 번째 waiter 등록
+            DeferredResult<ResponseEntity<ApiResponse<IntentArrivalResponse>>> oldResult =
+                    new DeferredResult<>(25_000L);
+            registry.register("tok-race", oldResult, 10L);
+            assertThat(registry.activeWaiters()).isEqualTo(1);
+
+            // 두 번째 waiter 등록 (타임아웃 재시도 시나리오 — 동일 tokenId 로 재등록)
+            DeferredResult<ResponseEntity<ApiResponse<IntentArrivalResponse>>> newResult =
+                    new DeferredResult<>(25_000L);
+            registry.register("tok-race", newResult, 10L);
+
+            // When: resolve() 호출 — newResult 가 맵에 있으므로 newResult 만 해소되어야 한다.
+            // 2-arg remove(tokenId, entry) 덕분에 구 entry 의 onCompletion 이 뒤늦게 실행돼도
+            // 신규 entry 를 지우지 않는다.
+            UUID intentId = UUID.randomUUID();
+            registry.resolve("tok-race", intentId, 10L, 5000L, "테스트매장", List.of());
+
+            // Then: newResult 가 200 OK 로 해소되었다.
+            // DeferredResult.onCompletion() 은 Spring MVC AsyncWebRequest 가 트리거하므로
+            // 단위 테스트에서는 호출되지 않는다. hasResult() / getResult() 로 직접 확인한다.
+            assertThat(newResult.hasResult()).isTrue();
+            ResponseEntity<ApiResponse<IntentArrivalResponse>> resp =
+                    (ResponseEntity<ApiResponse<IntentArrivalResponse>>) newResult.getResult();
+            assertThat(resp).isNotNull();
+            assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+            // 구 result 는 resolve 대상이 아니었으므로 결과 없음
+            assertThat(oldResult.hasResult()).isFalse();
+
+            // 게이지 값이 음수가 되지 않아야 한다
+            double activeGauge = meterRegistry.get("intent_wait_active").gauge().value();
+            assertThat(activeGauge).isGreaterThanOrEqualTo(0.0);
+        }
     }
 }

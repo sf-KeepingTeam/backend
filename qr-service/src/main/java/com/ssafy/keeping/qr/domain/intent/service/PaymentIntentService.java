@@ -375,7 +375,7 @@ public class PaymentIntentService {
   IdempotentResult<PaymentIntentDetailResponse> approveLegacy(
       UUID intentPublicId, String idempotencyKeyHeader, Long customerId, ApproveRequest req) {
 
-    return transactionTemplate.execute(status -> {
+    IdempotentResult<PaymentIntentDetailResponse> legacyResult = transactionTemplate.execute(status -> {
 
       // 멱등 바디 정규화
       String canonicalBody = canonicalizeApproveBody(req);
@@ -513,6 +513,14 @@ public class PaymentIntentService {
 
       return IdempotentResult.ok(res);
     });
+
+    // [AFTER] qrflow 키 정리 — TX 밖. 승인된 뒤에도 손님이 롱폴링하면
+    //         이미 처리된 intent 로 200 OK 를 다시 받는 것을 방지.
+    //         in-progress(202) 중에는 정리하지 않는다.
+    if (legacyResult != null && legacyResult.getHttpStatus() != org.springframework.http.HttpStatus.ACCEPTED) {
+      cleanupQrFlowKeys(intentPublicId);
+    }
+    return legacyResult;
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -700,6 +708,10 @@ public class PaymentIntentService {
       sendApprovalNotifications(intentSnapshot, customerId);
     }
 
+    // [AFTER] qrflow 키 정리 — 승인된 뒤에도 손님이 롱폴링하면
+    //         이미 처리된 intent 로 200 OK 를 다시 받는 것을 방지. TX 경계 불변.
+    cleanupQrFlowKeys(intentPublicId);
+
     return IdempotentResult.ok(res);
   }
 
@@ -724,6 +736,25 @@ public class PaymentIntentService {
     } catch (Exception e) {
       log.warn("결제 승인 알림 전송 실패 - 손님ID: {}, error: {}", customerId, e.getMessage());
       // 알림 실패해도 결제 승인은 성공 처리
+    }
+  }
+
+  /**
+   * approve 성공 후 qrflow Redis 키를 정리한다.
+   *
+   * <p>DEL 은 절대 결제 플로우를 막으면 안 된다. 실패 시 warn 로그만 남기고 예외를 전파하지 않는다.
+   * i2t 키로 tokenId 를 역참조한 뒤 intent + active 키를 함께 DEL 한다.
+   */
+  private void cleanupQrFlowKeys(UUID intentPublicId) {
+    try {
+      qrFlowRedisStore.getTokenIdForIntent(intentPublicId.toString()).ifPresent(tokenId -> {
+        qrFlowRedisStore.deleteIntentArrivalKeys(tokenId);
+        log.debug("[QR_FLOW] approve 후 롱폴링 키 정리 — intentPublicId={} tokenId={}",
+            intentPublicId, tokenId);
+      });
+    } catch (Exception e) {
+      log.warn("[QR_FLOW] 롱폴링 키 정리 실패 — intentPublicId={} error={}",
+          intentPublicId, e.getMessage());
     }
   }
 

@@ -13,6 +13,7 @@ import com.ssafy.keeping.qr.domain.qr.service.QrTokenService;
 import com.ssafy.keeping.qr.security.UserPrincipal;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -26,7 +27,8 @@ public class QrController {
 
   private final QrTokenService qrTokenService;
   private final QrFlowRedisStore qrFlowRedisStore;
-  private final IntentWaitRegistry intentWaitRegistry;
+  /** qr.intent-wait.enabled=false 시 빈이 없으므로 ObjectProvider 로 받는다. */
+  private final ObjectProvider<IntentWaitRegistry> intentWaitRegistryProvider;
 
   /** QR 토큰 생성 POST /api/qr */
   @PostMapping
@@ -77,12 +79,22 @@ public class QrController {
    *   <li>G-1: active 키 없음 → 404 (QR 스캔 전 또는 만료)
    *   <li>G-2: customerId 불일치 → 403
    *   <li>타임아웃 → 204 (DeferredResult timeout handler)
+   *   <li>qr.intent-wait.enabled=false → 404 즉시 반환 (기능 비활성화)
    * </ul>
    */
   @GetMapping("/{tokenId}/intent")
   public DeferredResult<ResponseEntity<ApiResponse<IntentArrivalResponse>>> waitForIntent(
       @PathVariable String tokenId,
       @AuthenticationPrincipal UserPrincipal principal) {
+
+    // qr.intent-wait.enabled=false 시 기능 비활성화 → 404
+    IntentWaitRegistry registry = intentWaitRegistryProvider.getIfAvailable();
+    if (registry == null) {
+      DeferredResult<ResponseEntity<ApiResponse<IntentArrivalResponse>>> immediate =
+          new DeferredResult<>();
+      immediate.setResult(ResponseEntity.notFound().build());
+      return immediate;
+    }
 
     // G-1: QR 스캔이 완료된 tokenId 인지 확인
     if (!qrFlowRedisStore.isActiveToken(tokenId)) {
@@ -96,7 +108,7 @@ public class QrController {
     DeferredResult<ResponseEntity<ApiResponse<IntentArrivalResponse>>> result =
         new DeferredResult<>(25_000L, ResponseEntity.noContent().build());
 
-    intentWaitRegistry.register(tokenId, result, principal.id());
+    registry.register(tokenId, result, principal.id());
     return result;
   }
 }
